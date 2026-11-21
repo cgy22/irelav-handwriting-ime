@@ -6,11 +6,11 @@
 
 ## ℹ️ About the Project
 
-**TonhTze Handwriting IME** is a handwriting input method for Windows. You click into any text box, a handwriting panel pops up, you write with a pen, a finger or a mouse, and the recognised character is inserted at the caret — without stealing focus from the application you are typing in.
+**TonhTze Handwriting IME** is a handwriting input method for Windows. A small panel stays pinned on top of your screen; click into any text box, write with a pen, a finger or a mouse, and the recognised character is inserted at that caret — the panel hands keyboard focus straight back afterwards, so the caret never wanders.
 
 It started as the classic MNIST course experiment (train a CNN, plot the loss curves, analyse the errors, test with your own handwriting) and grew into a working input method that recognises **100 character classes**: digits, upper- and lower-case Latin letters, 32 ASCII punctuation marks, and `Æ æ Œ œ Ê ê`.
 
-The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be restyled without touching any training code; the window itself is a frameless, rounded, Mica-backed Win32 window that never appears in the taskbar.
+The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be restyled without touching any training code; the window itself is a frameless, rounded, always-on-top window that never appears in the taskbar.
 
 ---
 
@@ -18,7 +18,7 @@ The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be resty
 
 | Category | Features |
 | :--- | :--- |
-| **Recognition** | 100 classes, 28×28 CNN (299.8 K parameters), ~10 ms per character on CPU |
+| **Recognition** | 100 classes, 28×28 CNN (299.8 K parameters), ~4 ms per character on CPU (plain numpy, no PyTorch) |
 | **Input** | Pen / touch / mouse via Pointer Events; pen pressure drives stroke width |
 | **Behaviour** | Always-on-top floating panel; no auto show/hide, so it never disappears mid-stroke. Clicking the pad hands focus straight back to the field you were typing in |
 | **Non-intrusive** | Focus is returned to the target field on every click and after every insertion, so the caret never gets lost |
@@ -38,7 +38,7 @@ mnist/
 │  ├─ server.py            HTTP service + inference + collection
 │  ├─ desktop.py           desktop shell: server + focus watcher + hotkeys + injection
 │  ├─ win32_helper.py      window styling, SendInput, clipboard, foreground tracking
-│  ├─ shell/               C# / WinForms + WebView2 native window
+│  ├─ shell/               C# / WinForms + WebView2 panel, plus the launchers
 │  └─ static/              panel front-end (HTML/CSS/JS)
 ├─ src/                    models, data pipeline, training, evaluation
 ├─ tools/                  build / packaging scripts
@@ -165,7 +165,7 @@ Fine-tuning on 802 samples and evaluating on 200 held-out samples:
 | Personalised | **95.50 %** | 92.50 % |
 | Gain | **+25.00 pp** | +26.50 pp |
 
-The shipping weights (`runs/exp2_final/best.pt`) are trained on all 1002 samples on top of the 100-class model, keeping the public benchmarks intact: MNIST 98.58 %, EMNIST 92.80 %, synthetic 96.72 %.
+The shipping weights (`data/model/glyph100.npz`, exported from `runs/exp2_final/best.pt`) are trained on all 1002 samples on top of the 100-class model, keeping the public benchmarks intact: MNIST 98.58 %, EMNIST 92.80 %, synthetic 96.72 %.
 
 ---
 
@@ -255,6 +255,34 @@ python tools/pack_single.py        :: one self-extracting exe
 
 ---
 
+## ❓ FAQ
+
+**Do I need Python installed?**
+Only for the 2.5 MB folder build. The portable folder and the single-file exe bundle their own runtime.
+
+**Do I need a GPU, or PyTorch?**
+No. Inference is plain numpy on the CPU — about 4 ms per glyph. PyTorch is only used for training and for exporting the weights.
+
+**Does it need Microsoft Edge?**
+The panel is rendered with WebView2, whose runtime ships with Windows 10/11 alongside Edge. Nothing else touches Edge, and the IME does not open browser windows. If the panel cannot draw, install the free *WebView2 Runtime* from Microsoft.
+
+**Does it work with every application?**
+With any application that uses a standard text field (Notepad, Office, browsers, Electron apps, WPF/WinUI, most editors). Applications that draw their own text UI and ignore injected input (some games, remote-desktop surfaces) will not accept the text.
+
+**Where is my handwriting stored?**
+Only development builds collect data, and only into `data/user/`. The normal panel does not record anything.
+
+---
+
+## ⚠️ Known Limitations
+
+* Homoglyphs (`O`/`0`, `I`/`l`/`1`, `S`/`5`) cannot be resolved from shape alone; the context heuristic and the candidate strip cover it.
+* Text insertion uses the clipboard (write + `Ctrl+V`), so it overwrites the current clipboard content.
+* The panel size is fixed per build; its position is remembered after you drag it.
+* The single-file build extracts about 107 MB into `%LOCALAPPDATA%\TonhTzeIME` on first run. Delete that folder to uninstall.
+
+---
+
 ## 📄 License
 
 [MIT](LICENSE) — Copyright © 2026 TonhTze AI, Copyright © 2021-2026 Dorn Hub.
@@ -293,11 +321,11 @@ Dorn Hub
 
 ## ℹ️ 关于本项目
 
-**TonhTze 手写输入法** 是一个 Windows 平台的手写输入工具。你点进任意输入框，手写面板自动弹出；用笔、手指或鼠标写一个字，识别结果直接落在光标处——**不会把焦点从你正在打字的程序里抢走**。
+**TonhTze 手写输入法** 是一个 Windows 平台的手写输入工具。一个小面板常驻屏幕上层；点进任意输入框，用笔、手指或鼠标写一个字，识别结果直接落在那个光标处——写完焦点会自动还给目标窗口，**光标不会跑丢**。
 
 它起于经典的 MNIST 课程实验（训练 CNN、画损失曲线、分析错误、用自己的手写数字测试），最终长成一个可用的输入法，识别 **100 类字符**：数字、大小写拉丁字母、32 个 ASCII 半角标点，以及 `Æ æ Œ œ Ê ê`。
 
-面板由 Chromium 渲染（WebView2 里的 HTML/CSS），改样式不用碰任何训练代码；窗口本身是无边框、圆角、Mica 材质的 Win32 窗口，且**不会出现在任务栏**。
+面板由 Chromium 渲染（WebView2 里的 HTML/CSS），改样式不用碰任何训练代码；窗口本身无边框、圆角、常驻置顶，且**不会出现在任务栏**。
 
 ---
 
@@ -305,7 +333,7 @@ Dorn Hub
 
 | 类别 | 说明 |
 | :--- | :--- |
-| **识别** | 100 类，28×28 CNN（29.98 万参数），CPU 单字约 10 ms |
+| **识别** | 100 类，28×28 CNN（29.98 万参数），CPU 单字约 4 ms（纯 numpy，不需要 PyTorch） |
 | **输入** | 笔 / 触控 / 鼠标统一走 Pointer Events，笔压控制笔锋粗细 |
 | **行为** | 常驻置顶浮层，不做自动显隐（避免写到一半消失）；点一下面板就把焦点还给刚才那个输入框 |
 | **不打扰** | 每次点击面板、每次插入之后都会把焦点还给目标输入框，光标不会丢 |
@@ -325,7 +353,7 @@ mnist/
 │  ├─ server.py            HTTP 服务 + 推理 + 采集
 │  ├─ desktop.py           桌面外壳：服务 + 焦点监听 + 热键 + 注入
 │  ├─ win32_helper.py      窗口样式、SendInput、剪贴板、前台窗口跟踪
-│  ├─ shell/               C# / WinForms + WebView2 原生窗口
+│  ├─ shell/               C# / WinForms + WebView2 面板，以及两个启动器
 │  └─ static/              面板前端（HTML/CSS/JS）
 ├─ src/                    模型、数据管线、训练与评估
 ├─ tools/                  构建与打包脚本
@@ -450,7 +478,7 @@ mnist/
 | 个性化后 | **95.50%** | 92.50% |
 | 净提升 | **+25.00 个百分点** | +26.50 个百分点 |
 
-发货权重（`runs/exp2_final/best.pt`）是在 100 类模型基础上、用全部 1002 条数据再训 6 轮得到的，公共基准没有退化：MNIST 98.58%、EMNIST 92.80%、合成 96.72%。
+发货权重（`data/model/glyph100.npz`，由 `runs/exp2_final/best.pt` 导出）是在 100 类模型基础上、用全部 1002 条数据再训 6 轮得到的，公共基准没有退化：MNIST 98.58%、EMNIST 92.80%、合成 96.72%。
 
 ---
 
@@ -537,6 +565,34 @@ python -m src.train_final    :: 把采集到的手写数据并进发货模型
 python tools/build_portable.py     :: 便携版（内嵌 Python 运行时）
 python tools/pack_single.py        :: 单文件自解压 exe
 ```
+
+---
+
+## ❓ 常见问题
+
+**需要先装 Python 吗？**
+只有 2.5 MB 的文件夹版需要。便携版和单文件 exe 都自带运行时。
+
+**需要显卡或 PyTorch 吗？**
+不需要。推理是纯 numpy 在 CPU 上跑的，单字约 4 ms。PyTorch 只用于训练和导出权重。
+
+**需要 Microsoft Edge 吗？**
+面板由 WebView2 渲染，它的运行时随 Windows 10/11 的 Edge 一起安装。除此之外不碰 Edge，也不会打开任何浏览器窗口。万一面板画不出来，装一个微软免费的 *WebView2 Runtime* 即可。
+
+**支持所有程序吗？**
+支持使用标准文本框的程序（记事本、Office、浏览器、Electron 应用、WPF/WinUI、绝大多数编辑器）。自己绘制文字界面、不接受注入输入的程序（部分游戏、远程桌面画面）无法接收文字。
+
+**我的手写数据存在哪？**
+只有开发模式会采集，且只写入 `data/user/`；正常使用不记录任何内容。
+
+---
+
+## ⚠️ 已知限制
+
+* 同形字符（`O`/`0`、`I`/`l`/`1`、`S`/`5`）无法只靠形状区分，靠上下文启发式与候选条兜底。
+* 文字注入走剪贴板（写入 + `Ctrl+V`），会覆盖你当前的剪贴板内容。
+* 面板尺寸在构建时固定；拖动后的位置会被记住。
+* 单文件版首次运行会向 `%LOCALAPPDATA%\TonhTzeIME` 释放约 107 MB，卸载时删掉该目录即可。
 
 ---
 

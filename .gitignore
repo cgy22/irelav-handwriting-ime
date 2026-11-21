@@ -1,23 +1,81 @@
-# 数据与缓存（体积大、可重建）
+# ---------------------------------------------------------------------------
+# TonhTze Handwriting IME — .gitignore
+# ---------------------------------------------------------------------------
+
+# --- 数据集（体积大，需自行下载） -----------------------------------------
 mnist_data/
-data/cache/
+*.idx
+*.idx.gz
+*.gz
+emnist/
+
+# --- 采集到的手写样本与缓存（属于本机数据，不进仓库） ----------------------
 data/user/
-verify/
+data/cache/
+data/source/*.png
 
-# Python
-__pycache__/
-*.pyc
-.pytest_cache/
+# --- 训练产物 --------------------------------------------------------------
+# 只保留 runs/ 下的指标与图表；权重、预测转储、日志体积大且可重建
+runs/**/*.npz
+runs/**/best.pt
+runs/**/last.pt
+runs/**/*.log
+runs/.cache/
 
-# 临时
-*.tmp
-_stage/
-
-# 构建产物 / 运行时数据（体积大且可重建）
-.runtime/
-.vendor/
+# --- 构建产物 --------------------------------------------------------------
 dist/
+*.exe
+*.dll
+*.pdb
+!app/**/*.manifest
 native/obj/
+build/
+
+# --- 运行时数据（WebView2 profile、窗口几何、日志） ------------------------
+.runtime/
+.window.json
+*.log
+!runs/**/*.log
+webview2/
+
+# --- 依赖与工具 ------------------------------------------------------------
+.vendor/
+node_modules/
+.pnpm-store/
+wheels/
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+*.egg-info/
+
+# --- 编辑器 / IDE ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# --- 操作系统 --------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# --- 临时文件 --------------------------------------------------------------
+_stage/
+*.tmp
+*.bak
+*.orig
 assets/_preview.html
-**/bin/
-**/obj/
