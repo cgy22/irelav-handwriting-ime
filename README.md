@@ -136,7 +136,7 @@ Preserving the aspect ratio matters: the identity of `-`, `|`, `'`, `.` lives in
 | Part | Specification |
 | :--- | :--- |
 | CPU | Intel Core Ultra 7 258V — 8 cores / 8 threads (4 P-cores + 4 LP E-cores), 2.2 GHz base, 12 MB L3 |
-| GPU | Intel Arc 140V iGPU — 16 GB shared memory, 64 EUs, 8 subslices, driver 32.0.101.8860, Level Zero 1.15.38308 |
+| GPU | Intel Arc 140V — 16 GB, 64 EUs, 8 subslices, driver 32.0.101.8860, Level Zero 1.15.38308 |
 | OS | Windows 11 Pro for Workstations, build 26340 |
 
 ### 🧰 Software Stack
@@ -499,7 +499,7 @@ irelav-handwriting-ime/
 | 部件 | 规格 |
 | :--- | :--- |
 | CPU | Intel Core Ultra 7 258V —— 8 核 / 8 线程（4 个 P-core + 4 个 LP E-core），2.2 GHz 基频，12 MB L3 |
-| 显卡 | Intel Arc 140V 核显 —— 16 GB 共享内存，64 EU，8 个 subslice，驱动 32.0.101.8860，Level Zero 1.15.38308 |
+| 显卡 | Intel Arc 140V —— 16 GB，64 EU，8 个 subslice，驱动 32.0.101.8860，Level Zero 1.15.38308 |
 | 系统 | Windows 11 Pro for Workstations，Build 26340 |
 
 ### 🧰 软件栈
