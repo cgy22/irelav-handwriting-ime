@@ -1,0 +1,18 @@
+[12:27:09] MNIST 训练 (60000, 28, 28) / 测试 (10000, 28, 28)
+[12:27:09] 模型 MnistNet 参数量 431.0K, 设备 xpu
+[12:34:30] MNIST 训练 (60000, 28, 28) / 测试 (10000, 28, 28)
+[12:34:30] 模型 MnistNet 参数量 431.0K, 设备 cpu
+[12:35:01] epoch 01/12  train_loss=0.3004  test_loss=0.0673  test_acc=97.87%  (28.4s)
+[12:35:29] epoch 02/12  train_loss=0.1111  test_loss=0.0416  test_acc=98.68%  (28.2s)
+[12:36:00] epoch 03/12  train_loss=0.0878  test_loss=0.0220  test_acc=99.27%  (30.8s)
+[12:36:34] epoch 04/12  train_loss=0.0725  test_loss=0.0251  test_acc=99.19%  (34.3s)
+[12:37:05] epoch 05/12  train_loss=0.0654  test_loss=0.0210  test_acc=99.22%  (31.1s)
+[12:37:35] epoch 06/12  train_loss=0.0567  test_loss=0.0182  test_acc=99.43%  (30.4s)
+[12:38:07] epoch 07/12  train_loss=0.0494  test_loss=0.0183  test_acc=99.43%  (31.3s)
+[12:38:38] epoch 08/12  train_loss=0.0449  test_loss=0.0155  test_acc=99.48%  (31.6s)
+[12:39:04] epoch 09/12  train_loss=0.0384  test_loss=0.0143  test_acc=99.49%  (25.4s)
+[12:39:29] epoch 10/12  train_loss=0.0370  test_loss=0.0131  test_acc=99.53%  (25.5s)
+[12:39:55] epoch 11/12  train_loss=0.0340  test_loss=0.0132  test_acc=99.58%  (25.9s)
+[12:40:20] epoch 12/12  train_loss=0.0304  test_loss=0.0130  test_acc=99.55%  (25.1s)
+[12:40:20] 训练完成，最佳测试准确率 99.58%，总耗时 5.8 分钟
+[12:40:22] 复载最佳权重复核：test_loss=0.0132 test_acc=99.58%

@@ -1,0 +1,8 @@
+[12:42:01] 评估集 mnist: 10000 张
+[12:42:01] 评估集 emnist: 20800 张
+[12:42:01] 评估集 synth: 6000 张
+[12:42:01] 模型 GlyphNet 参数量 299.8K, 设备 cpu, 训练集 224800
+[12:44:12] epoch 01/12 train_loss=2.0823 | mnist: loss=0.416 id=95.3% top5=99.6% | emnist: loss=2.615 id=64.3% top5=92.6% | synth: loss=1.157 id=83.6% top5=97.2% | 129.5s
+[12:44:12]    ^ 新最佳（mean identity acc 81.09%），已保存
+[12:46:12] epoch 02/12 train_loss=1.6056 | mnist: loss=0.467 id=97.2% top5=99.3% | emnist: loss=2.560 id=73.9% top5=95.0% | synth: loss=0.903 id=88.4% top5=98.1% | 119.9s
+[12:46:12]    ^ 新最佳（mean identity acc 86.52%），已保存

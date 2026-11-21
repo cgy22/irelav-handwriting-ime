@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>手写输入法 · Handwriting IME</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="ime" id="ime">
+
+  <div class="topbar">
+    <div class="brand">手写输入法</div>
+    <div class="tabs">
+      <button class="tab active" data-mode="input">输入</button>
+      <button class="tab" data-mode="collect">采集</button>
+    </div>
+    <div class="meta" id="meta">连接中…</div>
+  </div>
+
+  <!-- 候选条 -->
+  <div class="candbar" id="candbar">
+    <div class="cand empty">书写后显示候选</div>
+  </div>
+
+  <!-- 书写区 -->
+  <div class="padwrap">
+    <canvas id="pad"></canvas>
+    <div class="padhint" id="padhint">在此书写 · 支持笔 / 触控 / 鼠标</div>
+    <div class="casebadge" id="casebadge">大小写：自动</div>
+  </div>
+
+  <!-- 采集模式控制条 -->
+  <div class="collectbar hidden" id="collectbar">
+    <div class="target">
+      <span class="tlabel">目标字符</span>
+      <span class="tchar" id="tchar">0</span>
+      <span class="tprog" id="tprog">0 / 0</span>
+    </div>
+    <div class="collectctl">
+      <select id="targetSel" title="选择要采集的字符"></select>
+      <label>每类 <input id="quota" type="number" min="1" max="99" value="12" /> 个</label>
+      <label>存入
+        <select id="splitSel">
+          <option value="train">训练集</option>
+          <option value="test">测试集</option>
+        </select>
+      </label>
+      <button id="skipBtn" class="ghost">跳过此字</button>
+    </div>
+  </div>
+
+  <!-- 文本输出 -->
+  <div class="output" id="output">
+    <span class="placeholder" id="ph">识别结果会出现在这里</span><span id="text"></span><span class="caret"></span>
+  </div>
+
+  <!-- 功能键 -->
+  <div class="keybar">
+    <button id="shiftBtn" class="key wide">Shift 切换大小写</button>
+    <button id="spaceBtn" class="key">空格</button>
+    <button id="backBtn" class="key">退格</button>
+    <button id="clearBtn" class="key">清空</button>
+    <button id="commitBtn" class="key primary">确认 ↵</button>
+    <button id="copyBtn" class="key">复制</button>
+  </div>
+
+  <div class="statusbar">
+    <span id="status">就绪</span>
+    <span id="latency"></span>
+  </div>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
