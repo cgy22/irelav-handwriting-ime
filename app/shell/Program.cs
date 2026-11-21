@@ -189,6 +189,7 @@ namespace TonhTzeIME
         private readonly WebView2 _web;
 
         private readonly string _url;
+        private readonly string _base;
 
         private readonly string _userDataDir;
 
@@ -211,6 +212,7 @@ namespace TonhTzeIME
         {
 
             _url = url;
+            _base = url.Contains("?") ? url.Substring(0, url.IndexOf('?')) : url;
 
             _userDataDir = userDataDir;
 
@@ -394,11 +396,32 @@ namespace TonhTzeIME
 
 
 
-        /// <summary>请 Python 侧统一摆放并显示面板：尺寸/位置由它记忆，
-        /// 直接 ShowWindow 会用 C# 的默认尺寸，从托盘恢复时会变小。</summary>
+        /// <summary>托盘"显示面板"：先按 .runtime/window.json 里的几何本地摆放，
+        /// 再通知 Python 同步状态。这样即使 IPC 失败，也能正确显示且尺寸不变。</summary>
         private void AskHostShow()
         {
-            PostJson("/api/window", "{\"action\":\"show\"}");
+            try
+            {
+                string geom = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", ".runtime", "window.json");
+                if (File.Exists(geom))
+                {
+                    var text = File.ReadAllText(geom);
+                    int Pick(string key)
+                    {
+                        var m = System.Text.RegularExpressions.Regex.Match(text, "\"" + key + "\"\\s*:\\s*(-?\\d+)");
+                        return m.Success ? int.Parse(m.Groups[1].Value) : 0;
+                    }
+                    int gx = Pick("x"), gy = Pick("y"), gw = Pick("w"), gh = Pick("h");
+                    if (gw > 200 && gh > 200)
+                    {
+                        Native.SetWindowPos(Handle, Native.HWND_TOPMOST, gx, gy, gw, gh,
+                                            Native.SWP_SHOWWINDOW | Native.SWP_NOACTIVATE);
+                    }
+                }
+            }
+            catch { }
+            ShowPanel();
+            PostJson("/api/window", "{\"action\":\"shown\"}");
         }
 
         public void ShowPanel()
@@ -431,7 +454,7 @@ namespace TonhTzeIME
 
             {
 
-                var req = (HttpWebRequest)WebRequest.Create(_url + path);
+                var req = (HttpWebRequest)WebRequest.Create(_base + path);
 
                 req.Method = "POST";
 
@@ -507,7 +530,7 @@ namespace TonhTzeIME
 
                 {
 
-                    var req = (HttpWebRequest)WebRequest.Create(_url + "/api/state");
+                    var req = (HttpWebRequest)WebRequest.Create(_base + "/api/state");
 
                     req.Timeout = 2000;
 

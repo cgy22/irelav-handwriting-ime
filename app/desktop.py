@@ -167,6 +167,8 @@ def _place_panel(hwnd: int) -> None:
         log(f"面板默认尺寸 {w}x{h} (DPI {pw.window_dpi(hwnd)}) @ ({x},{y})")
     except Exception:
         pass
+    # 立刻落盘一份几何：外壳的托盘菜单会读它来复原窗口，不依赖进程间通信
+    _save_geom()
 
 
 EDGE_PATHS = [
@@ -402,6 +404,9 @@ def do_window(payload) -> bool:
     if action == "hide":
         pw.hide_window(hwnd)
         state["visible"] = False
+    elif action == "shown":
+        # 外壳自己已经显示了窗口，这里只同步状态，不再重复显示
+        state["visible"] = True
     elif action == "show":
         _place_panel(hwnd)
         pw.show_window(hwnd, focus=False)
@@ -453,6 +458,21 @@ def _watch_panel_alive() -> None:
         if hwnd and not pw.user32.IsWindow(hwnd):
             log("面板窗口已消失，退出")
             os._exit(0)
+
+
+def _hotkey_show() -> None:
+    hwnd = state.get("panel")
+    if hwnd:
+        _place_panel(hwnd)
+        pw.show_window(hwnd, focus=False)
+        state["visible"] = True
+
+
+def _hotkey_hide() -> None:
+    hwnd = state.get("panel")
+    if hwnd:
+        pw.hide_window(hwnd)
+        state["visible"] = False
 
 
 def toggle_panel() -> None:
@@ -514,12 +534,17 @@ def main() -> None:
 
     pw.start_hotkeys(
         [(1, pw.MOD_CONTROL | pw.MOD_ALT, 0x48),      # Ctrl+Alt+H 显示/隐藏
-         (2, pw.MOD_CONTROL | pw.MOD_ALT, 0x51)],     # Ctrl+Alt+Q 退出
-        {1: toggle_panel, 2: lambda: os._exit(0)},
+         (2, pw.MOD_CONTROL | pw.MOD_ALT, 0x51),      # Ctrl+Alt+Q 退出
+         (3, pw.MOD_CONTROL | pw.MOD_ALT, 0x53),      # Ctrl+Alt+S 显示
+         (4, pw.MOD_CONTROL | pw.MOD_ALT, 0x44),      # Ctrl+Alt+D 隐藏
+         (5, pw.MOD_CONTROL | pw.MOD_ALT, 0x20)],     # Ctrl+Alt+Space 显示/隐藏
+        {1: toggle_panel, 2: lambda: os._exit(0),
+         3: lambda: _hotkey_show(), 4: lambda: _hotkey_hide(),
+         5: toggle_panel},
     )
     pw.FocusWatcher(on_focus).start()
     threading.Thread(target=_watch_panel_alive, daemon=True).start()
-    log("热键 Ctrl+Alt+H 显示/隐藏，Ctrl+Alt+Q 退出")
+    log("热键 Ctrl+Alt+H / Ctrl+Alt+Space 显示隐藏，Ctrl+Alt+S 显示，Ctrl+Alt+D 隐藏，Ctrl+Alt+Q 退出")
 
     try:
         while True:

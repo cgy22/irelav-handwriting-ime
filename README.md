@@ -61,7 +61,9 @@ That starts the HTTP service and the panel shell. The panel appears immediately,
 
 | Action | How |
 | :--- | :--- |
-| Show / hide panel | `Ctrl+Alt+H` |
+| Show / hide panel | `Ctrl+Alt+H` or `Ctrl+Alt+Space` |
+| Show panel only | `Ctrl+Alt+S` |
+| Hide panel only | `Ctrl+Alt+D` |
 | Quit completely | `Ctrl+Alt+Q`, or tray menu → exit |
 | Drag the panel | Drag the title bar of the panel |
 | Write a character | Write, then pause 1.2 s — it is inserted automatically |
@@ -325,7 +327,9 @@ start_ime.cmd
 
 | 操作 | 方式 |
 | :--- | :--- |
-| 显示 / 隐藏面板 | `Ctrl+Alt+H` |
+| 显示 / 隐藏面板 | `Ctrl+Alt+H` 或 `Ctrl+Alt+Space` |
+| 只显示面板 | `Ctrl+Alt+S` |
+| 只隐藏面板 | `Ctrl+Alt+D` |
 | 完全退出 | `Ctrl+Alt+Q`，或托盘菜单 → 退出 |
 | 移动面板 | 拖动面板标题栏 |
 | 写一个字 | 写完停顿 1.2 秒，自动插入 |
