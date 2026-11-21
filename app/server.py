@@ -39,6 +39,10 @@ PORT = int(os.environ.get("IME_PORT", "8765"))
 
 _lock = threading.Lock()
 
+# 生产外壳（app/production.py）会把这些钩子换成真实的 Win32 实现；
+# 单独跑 server.py 时保持 None，接口返回 501，前端会给出提示。
+HOOKS = {"key": None, "send": None, "drag": None, "window": None}
+
 # ------------------------------------------------------------------ 词表
 WORDS_PATH = os.path.join(_ROOT, "data", "words.json")
 _WORDS = []
@@ -109,13 +113,13 @@ class Recognizer:
             classes = list(ck.get("classes", CLASSES))
             m = GlyphNet(len(classes))
             m.load_state_dict(ck["model"])
-            self.model, self.classes, self.name = m, classes, "exp2_final 100类(含你的笔迹)"
+            self.model, self.classes, self.name = m, classes, "TonhTze Handwriting v1.0 · 100 类"
         elif os.path.exists(exp2):
             ck = torch.load(exp2, map_location="cpu")
             classes = list(ck.get("classes", CLASSES))
             m = GlyphNet(len(classes))
             m.load_state_dict(ck["model"])
-            self.model, self.classes, self.name = m, classes, "exp2_ext 100类"
+            self.model, self.classes, self.name = m, classes, "TonhTze Handwriting v1.0 · 100 类"
         elif os.path.exists(exp1):
             ck = torch.load(exp1, map_location="cpu")
             m = MnistNet(10)
@@ -385,6 +389,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_collect(payload)
             elif self.path == "/api/undo":
                 self._handle_undo(payload)
+            elif self.path == "/api/key":
+                self._handle_key(payload)
+            elif self.path == "/api/send":
+                self._handle_send(payload)
+            elif self.path == "/api/drag":
+                self._handle_drag(payload)
+            elif self.path == "/api/window":
+                self._handle_window(payload)
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:  # 任何内部异常都回 JSON，不让连接被直接掐断
@@ -414,6 +426,41 @@ class Handler(BaseHTTPRequestHandler):
         ms = (time.perf_counter() - t0) * 1000
         hint = "upper" if prior > 0.5 else ("lower" if prior < -0.5 else "unknown")
         self._json({"top": top, "ms": round(ms, 1), "case_hint": hint, "height": round(met["height"], 1)})
+
+    def _handle_key(self, payload):
+        fn = HOOKS.get("key")
+        if fn is None:
+            self._json({"ok": False, "error": "系统按键注入不可用（未以桌面外壳启动）"})
+            return
+        key = str(payload.get("key") or "")
+        ok, msg = fn(key)
+        self._json({"ok": ok, "error": None if ok else (msg or f"注入失败: {key}")})
+
+    def _handle_send(self, payload):
+        fn = HOOKS.get("send")
+        if fn is None:
+            self._json({"ok": False, "error": "文本注入不可用（未以桌面外壳启动）"})
+            return
+        text = str(payload.get("text") or "")
+        enter = bool(payload.get("trailing_enter"))
+        ok, msg = fn(text, enter)
+        self._json({"ok": ok, "error": None if ok else (msg or "注入失败")})
+
+    def _handle_drag(self, payload):
+        fn = HOOKS.get("drag")
+        if fn is None:
+            self._json({"ok": False, "error": "窗口拖动不可用"})
+            return
+        fn()
+        self._json({"ok": True})
+
+    def _handle_window(self, payload):
+        fn = HOOKS.get("window")
+        if fn is None:
+            self._json({"ok": False, "error": "窗口控制不可用"})
+            return
+        res = fn(payload)
+        self._json({"ok": res is not False})
 
     def _handle_undo(self, payload):
         """删掉最后一条刚存错的样本（采集时写错/标签不对时用）。"""

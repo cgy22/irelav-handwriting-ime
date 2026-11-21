@@ -1,13 +1,14 @@
-/* 手写输入法前端
- * 笔 / 触控 / 鼠标统一走 Pointer Events；触控笔的压力用于笔锋粗细。
- * 核心交互：书写 -> 停顿 800ms 自动提交 -> 候选条可改字。
+/* TonhTze AI 手写输入法 · 前端逻辑
+ *
+ * 输入：Pointer Events（手写笔 / 触控 / 鼠标统一），笔压用于笔锋。
+ * 交互：写完停 1.2s 自动提交；候选字可改字；候选词只显示 dh；功能键注入到系统光标处。
  */
 (() => {
   "use strict";
 
   const $ = (id) => document.getElementById(id);
   const pad = $("pad");
-  const ctx = pad.getContext("2d", { desynchronized: true });
+  const ctx = pad.getContext("2d");
   const candbar = $("candbar");
   const wordbar = $("wordbar");
   const textEl = $("text");
@@ -24,6 +25,11 @@
   const splitSel = $("splitSel");
   const quotaEl = $("quota");
 
+  // 识别概率、往返延迟这类调试信息只在 ?debug=1 时展示
+  const DEBUG = new URLSearchParams(location.search).has("debug");
+  // 写完立刻插入到目标输入框（无需点"发送"）
+  const AUTO_INSERT = true;
+
   const state = {
     mode: "input",
     strokes: [],
@@ -31,18 +37,18 @@
     text: "",
     lineHeights: [],
     candidates: [],
-    lastCands: [],
-    lastStrokes: [],
     shift: false,
     dpr: 1,
     commitTimer: null,
+    wordTimer: null,
     classes: [],
-    counts: {},
     countsTrain: {},
     countsTest: {},
+    counts: {},
     targetIdx: 0,
-    quota: 12,
+    quota: 10,
     split: "train",
+    pointerId: null,
   };
 
   /* ------------------------------------------------------------------ 画布 */
@@ -50,12 +56,11 @@
     const rect = pad.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     state.dpr = dpr;
-    pad.width = Math.round(rect.width * dpr);
-    pad.height = Math.round(rect.height * dpr);
+    pad.width = Math.max(1, Math.round(rect.width * dpr));
+    pad.height = Math.max(1, Math.round(rect.height * dpr));
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     redraw();
   }
-  window.addEventListener("resize", resize);
 
   function ptOf(e) {
     const r = pad.getBoundingClientRect();
@@ -66,9 +71,7 @@
     };
   }
 
-  function strokeWidth(p) {
-    return 2.2 + 4.6 * Math.min(1, Math.max(0, p)); // 压力 -> 笔锋
-  }
+  const strokeWidth = (p) => 2.2 + 4.6 * Math.min(1, Math.max(0, p));
 
   function drawSegment(a, b) {
     ctx.strokeStyle = "#1b2430";
@@ -87,16 +90,16 @@
     paintWatermark();
   }
 
-  // 采集模式下把目标字符画成书写区里的淡色水印：
-  // 只在小标签上显示目标时，很容易"顺手写别的数字"，标签就会错位。
+  /* 采集模式：把目标字符画成书写区水印（避免"顺手写别的"导致标签错位） */
   function paintWatermark() {
     if (state.mode !== "collect") return;
     const ch = currentTarget();
     if (!ch) return;
+    const size = Math.min(pad.clientHeight * 0.8, 190);
     ctx.save();
     ctx.globalAlpha = 0.08;
-    ctx.fillStyle = "#2f6df6";
-    ctx.font = "190px 'Microsoft YaHei', 'Segoe UI', serif";
+    ctx.fillStyle = "#16DA49";
+    ctx.font = `600 ${size}px "Microsoft YaHei", "Segoe UI", serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(ch === " " ? "␣" : ch, pad.clientWidth / 2, pad.clientHeight / 2);
@@ -105,22 +108,15 @@
 
   function redraw() {
     clearPad();
-    for (const s of state.strokes) {
+    const all = state.cur ? state.strokes.concat([state.cur]) : state.strokes;
+    for (const s of all) {
+      if (!s.length) continue;
       if (s.length === 1) {
         ctx.beginPath();
         ctx.arc(s[0].x, s[0].y, strokeWidth(s[0].p) / 2, 0, Math.PI * 2);
         ctx.fillStyle = "#1b2430";
         ctx.fill();
-      }
-      for (let i = 1; i < s.length; i++) drawSegment(s[i - 1], s[i]);
-    }
-    if (state.cur && state.cur.length) {
-      const s = state.cur;
-      if (s.length === 1) {
-        ctx.beginPath();
-        ctx.arc(s[0].x, s[0].y, strokeWidth(s[0].p) / 2, 0, Math.PI * 2);
-        ctx.fillStyle = "#1b2430";
-        ctx.fill();
+        continue;
       }
       for (let i = 1; i < s.length; i++) drawSegment(s[i - 1], s[i]);
     }
@@ -133,6 +129,7 @@
     if (e.button !== undefined && e.button > 0) return;
     e.preventDefault();
     pad.setPointerCapture(e.pointerId);
+    state.pointerId = e.pointerId;
     if (state.commitTimer) {
       clearTimeout(state.commitTimer);
       state.commitTimer = null;
@@ -144,7 +141,7 @@
   });
 
   pad.addEventListener("pointermove", (e) => {
-    if (!state.cur) return;
+    if (!state.cur || e.pointerId !== state.pointerId) return;
     e.preventDefault();
     const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
     for (const ev of evs) {
@@ -156,23 +153,17 @@
     }
   });
 
-  function endStroke(e) {
+  function endStroke() {
     if (!state.cur) return;
-    if (state.cur.length === 0) {
-      state.cur = null;
-      return;
-    }
-    state.strokes.push(state.cur);
+    if (state.cur.length) state.strokes.push(state.cur);
     state.cur = null;
+    state.pointerId = null;
     lastPt = null;
     redraw();
     scheduleCommit();
   }
   pad.addEventListener("pointerup", endStroke);
   pad.addEventListener("pointercancel", endStroke);
-  pad.addEventListener("pointerleave", (e) => {
-    if (state.cur) endStroke(e);
-  });
 
   function scheduleCommit() {
     if (state.commitTimer) clearTimeout(state.commitTimer);
@@ -182,7 +173,7 @@
     }, 1200);
   }
 
-  /* ------------------------------------------------------------------ 识别 */
+  /* ------------------------------------------------------------------ 网络 */
   async function postJSON(url, body) {
     const r = await fetch(url, {
       method: "POST",
@@ -207,11 +198,20 @@
     }
     state.candidates = res.top || [];
     renderCandidates();
-    latencyEl.textContent = `推理 ${res.ms}ms · 往返 ${(performance.now() - t0).toFixed(0)}ms`;
+    latencyEl.textContent = DEBUG
+      ? `推理 ${res.ms}ms · 往返 ${(performance.now() - t0).toFixed(0)}ms`
+      : "";
     if (res.case_hint === "upper") casebadge.textContent = "大小写：偏大写（本行偏高）";
     else if (res.case_hint === "lower") casebadge.textContent = "大小写：偏小写（本行偏低）";
-    else casebadge.textContent = state.shift ? "大小写：Shift 强制大写态" : "大小写：自动";
+    else casebadge.textContent = state.shift ? "大小写：Shift 强制大写" : "大小写：自动";
     return res;
+  }
+
+  /* -------------------------------------------------------------- 候选渲染 */
+  function displayChar(c) {
+    let ch = c.ch;
+    if (state.shift) ch = ch.toUpperCase();
+    return ch === " " ? "␣" : ch;
   }
 
   function renderCandidates() {
@@ -222,67 +222,39 @@
     }
     state.candidates.forEach((c, i) => {
       const el = document.createElement("button");
-      el.className = "cand" + (i === 0 ? "" : " alt");
-      el.innerHTML = `<span class="ch">${escapeHtml(displayChar(c))}</span><span class="p">${(c.p * 100).toFixed(0)}%</span>`;
+      el.className = "cand";
+      el.innerHTML = DEBUG
+        ? `<span class="ch">${escapeHtml(displayChar(c))}</span><span class="p">${(c.p * 100).toFixed(0)}%</span>`
+        : `<span class="ch">${escapeHtml(displayChar(c))}</span>`;
       el.title = `点击替换为 ${displayChar(c)}`;
       el.onclick = () => pickCandidate(i);
       candbar.appendChild(el);
     });
   }
 
-  function displayChar(c) {
-    let ch = c.ch;
-    if (state.shift) ch = ch.toUpperCase(); // Shift 只把字母推向大写形态
-    return ch === " " ? "␣" : ch;
-  }
-
-  /* ------------------------------------------------------------------ 提交 */
-  async function commit(forceChar) {
-    if (!state.strokes.length) return;
-    setStatus("识别中…");
-    const res = await recognize();
-    if (!res) return;
-
-    if (state.mode === "collect") {
-      await saveSample();
-      return;
+  function pickCandidate(i) {
+    const c = state.candidates[i];
+    if (!c) return;
+    if (state.mode === "collect") return;
+    const ch = displayChar(c);
+    if (state.text.length && state.candidates.length) {
+      state.text = state.text.slice(0, -1) + ch;
+      textEl.textContent = state.text;
+      setStatus(`改为 "${ch}"`);
+      refreshWords();
     }
-
-    let ch = forceChar;
-    if (!ch) {
-      if (!state.candidates.length) {
-        setStatus("没有候选", true);
-        return;
-      }
-      ch = displayChar(state.candidates[0]);
-    }
-    appendChar(ch);
-    if (res.height) state.lineHeights.push(res.height);
-    state.lastStrokes = state.strokes.map((s) => s.slice());
-    state.lastCands = state.candidates.slice();
-    state.strokes = [];
-    clearPad();
-    setStatus(`已输入 "${ch}"`);
   }
 
-  function appendChar(ch) {
-    state.text += ch;
-    phEl.style.display = "none";
-    textEl.textContent = state.text;
-    refreshWords();
-  }
-
-  /* 当前正在拼写的词前缀（结尾连续字母 / 撇号 / 连字符） */
+  /* ------------------------------------------------------------- 候选词 dh */
   function currentPrefix() {
     if (state.mode === "collect") return "";
     const m = state.text.match(/[A-Za-z\u00C0-\u024F'\u2018\u2019-]+$/);
     return m ? m[0] : "";
   }
 
-  let wordTimer = null;
   function refreshWords() {
-    if (wordTimer) clearTimeout(wordTimer);
-    wordTimer = setTimeout(async () => {
+    if (state.wordTimer) clearTimeout(state.wordTimer);
+    state.wordTimer = setTimeout(async () => {
       const prefix = currentPrefix();
       if (!prefix) {
         wordbar.innerHTML = "";
@@ -299,12 +271,13 @@
         for (const w of d.items) {
           const el = document.createElement("button");
           el.className = "word";
-          el.title = `${w.dh}（${w.type || "?"}）${w.cn}`;
-          el.innerHTML = `<span class="dh">${escapeHtml(w.dh)}</span><span class="cn">${escapeHtml((w.cn || "").slice(0, 10))}</span>`;
-          el.onclick = () => {
+          el.textContent = w.dh;          // 只显示 dh，不显示释义
+          el.title = `补全为 ${w.dh}`;
+          el.onclick = async () => {
             const rest = w.dh.slice(prefix.length);
             if (rest) appendChar(rest);
-            setStatus(`选词 ${w.dh} → ${w.cn}`);
+            if (AUTO_INSERT && rest) await postJSON("/api/send", { text: rest });
+            setStatus(`选词 ${w.dh}`);
             refreshWords();
           };
           wordbar.appendChild(el);
@@ -315,29 +288,48 @@
     }, 120);
   }
 
-  function pickCandidate(i) {
-    const c = state.candidates[i];
-    if (!c) return;
-    const ch = displayChar(c);
+  /* ------------------------------------------------------------------ 提交 */
+  async function commit() {
+    if (!state.strokes.length) return;
+    setStatus("识别中…");
+    const res = await recognize();
+    if (!res) return;
+
     if (state.mode === "collect") {
-      setStatus(`候选: ${ch}`);
+      await saveSample();
       return;
     }
-    // 有刚提交的字就替换，否则重新提交
-    if (state.text.length >= 1 && state.lastStrokes.length) {
-      state.text = state.text.slice(0, -1) + ch;
-      textEl.textContent = state.text;
-      setStatus(`改为 "${ch}"`);
+    if (!state.candidates.length) {
+      setStatus("没有候选", true);
+      return;
     }
+    const ch = displayChar(state.candidates[0]);
+    appendChar(ch);
+    if (res.height) state.lineHeights.push(res.height);
+    state.strokes = [];
+    clearPad();
+    if (AUTO_INSERT) {
+      const sent = await postJSON("/api/send", { text: ch });
+      setStatus(sent.ok ? `已插入 "${ch}"` : `已识别 "${ch}"（插入失败：${sent.error}）`, !sent.ok);
+    } else {
+      setStatus(`已输入 "${ch}"`);
+    }
+  }
+
+  function appendChar(ch) {
+    state.text += ch;
+    phEl.style.display = "none";
+    textEl.textContent = state.text;
+    refreshWords();
   }
 
   /* ------------------------------------------------------------------ 采集 */
-  function currentTarget() {
-    return state.classes[state.targetIdx % Math.max(1, state.classes.length)] || "";
-  }
-
   function currentCounts() {
     return state.split === "test" ? state.countsTest : state.countsTrain;
+  }
+
+  function currentTarget() {
+    return state.classes[state.targetIdx % Math.max(1, state.classes.length)] || "";
   }
 
   function refreshTargetUI() {
@@ -356,8 +348,7 @@
     let i = state.targetIdx;
     for (let k = 0; k < total; k++) {
       i = (i + 1) % total;
-      const ch = state.classes[i];
-      if ((currentCounts()[ch] || 0) < state.quota) break;
+      if ((currentCounts()[state.classes[i]] || 0) < state.quota) break;
     }
     state.targetIdx = i;
     if (targetSel.options.length) targetSel.selectedIndex = i;
@@ -380,13 +371,13 @@
     currentCounts()[ch] = res.count;
     const pred = state.candidates.length ? state.candidates[0].ch : "?";
     const pp = state.candidates.length ? state.candidates[0].p : 0;
-    state.lastSaved = { ch, split: state.split };
     const mismatch = pred !== "?" && pred.toLowerCase() !== ch.toLowerCase() && pp >= 0.55;
-    if (mismatch) {
-      setStatus(`⚠ 已按目标 "${ch}" 保存，但模型读成了 "${pred}"（${(pp * 100).toFixed(0)}%）——写错了请点「撤销上一条」`, true);
-    } else {
-      setStatus(`已存 "${ch}"（${res.count}）· 模型识别为 "${pred}"`);
-    }
+    setStatus(
+      mismatch
+        ? `⚠ 已按目标 "${ch}" 保存，但模型读成 "${pred}"（${(pp * 100).toFixed(0)}%）——写错了请点「撤销上一条」`
+        : `已存 "${ch}"（${res.count}）· 模型识别为 "${pred}"`,
+      mismatch
+    );
     state.strokes = [];
     clearPad();
     refreshTargetUI();
@@ -426,17 +417,114 @@
       state.classes = s.classes && s.classes.length ? s.classes : "0123456789".split("");
       state.countsTrain = s.counts_train || {};
       state.countsTest = s.counts_test || {};
-      state.counts = state.split === "test" ? state.countsTest : state.countsTrain;
-      metaEl.textContent = `${s.model} · ${state.classes.length} 类`;
+      state.counts = currentCounts();
+      metaEl.textContent = s.model || "已连接";
       fillTargets();
-      setStatus(`就绪 · 已采集训练 ${s.count_train} / 测试 ${s.count_test}`);
-    } catch (e) {
+      setStatus(`就绪 · 训练集 ${s.count_train} / 测试集 ${s.count_test}`);
+    } catch {
       metaEl.textContent = "服务未连接";
-      setStatus("无法连接后端，请确认 server.py 已启动", true);
+      setStatus("无法连接后端，请确认服务已启动", true);
     }
   }
 
-  /* ------------------------------------------------------------------ 按钮 */
+  /* ------------------------------------------------------------ 窗口控制 */
+  // 面板是 WS_EX_NOACTIVATE 的（点了不抢焦点），所以不能用系统标题栏拖动，
+  // 这里把表头上的拖动换算成位移，逐帧发给服务端移动窗口。
+  const head = document.querySelector(".ime-head");
+  let dragging = null;
+  let lastSent = 0;
+  if (head) {
+    head.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      head.setPointerCapture(e.pointerId);
+      dragging = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      e.preventDefault();
+    });
+    head.addEventListener("pointermove", (e) => {
+      if (!dragging || e.pointerId !== dragging.id) return;
+      const now = performance.now();
+      if (now - lastSent < 16) return;   // 约 60fps
+      const dx = Math.round(e.clientX - dragging.x);
+      const dy = Math.round(e.clientY - dragging.y);
+      if (!dx && !dy) return;
+      dragging.x = e.clientX;
+      dragging.y = e.clientY;
+      lastSent = now;
+      postJSON("/api/window", { action: "move", dx, dy }).catch(() => {});
+    });
+    const stopDrag = (e) => {
+      if (dragging && e.pointerId === dragging.id) dragging = null;
+    };
+    head.addEventListener("pointerup", stopDrag);
+    head.addEventListener("pointercancel", stopDrag);
+  }
+
+  async function windowAction(action) {
+    try {
+      const res = await postJSON("/api/window", { action });
+      if (res && res.ok === false) {
+        setStatus("窗口控制不可用：请用 start_ime.cmd 启动（不要直接开网页）", true);
+      }
+    } catch {
+      setStatus("窗口控制不可用：服务未以桌面外壳启动", true);
+    }
+  }
+  $("minBtn").onclick = () => windowAction("hide");
+  $("closeBtn").onclick = () => windowAction("close");
+
+  /* -------------------------------------------------------------- 系统按键 */
+  async function sendKey(key) {
+    const res = await postJSON("/api/key", { key });
+    if (res.error) setStatus(res.error, true);
+    else setStatus(`已发送 ${key}`);
+  }
+
+  document.querySelectorAll("[data-key]").forEach((btn) => {
+    btn.onclick = () => {
+      const k = btn.dataset.key;
+      // ⌫ 优先删本地文本，空了才把退格送给系统
+      if (k === "backspace" && state.text.length) {
+        state.text = state.text.slice(0, -1);
+        textEl.textContent = state.text;
+        if (!state.text.length) phEl.style.display = "";
+        refreshWords();
+        setStatus("退格");
+        return;
+      }
+      // ↵ 先把已输入文本送到光标处，再发回车
+      if (k === "enter") {
+        sendEnter();
+        return;
+      }
+      sendKey(k);
+    };
+  });
+
+  async function sendEnter() {
+    if (state.text) {
+      await postJSON("/api/send", { text: state.text, trailing_enter: true });
+      state.text = "";
+      textEl.textContent = "";
+      phEl.style.display = "";
+      wordbar.innerHTML = "";
+      setStatus("已发送并回车");
+    } else {
+      await postJSON("/api/key", { key: "enter" });
+      setStatus("回车");
+    }
+  }
+
+  $("sendBtn").onclick = async () => {
+    if (!state.text) {
+      setStatus("没有可发送的内容", true);
+      return;
+    }
+    const res = await postJSON("/api/send", { text: state.text });
+    if (res.error) setStatus(res.error, true);
+    else setStatus(`已发送 ${state.text.length} 个字符到光标处`);
+  };
+
+  /* ------------------------------------------------------------------ 控件 */
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.onclick = () => {
       document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
@@ -444,9 +532,7 @@
       state.mode = btn.dataset.mode;
       collectbar.classList.toggle("hidden", state.mode !== "collect");
       padhint.textContent =
-        state.mode === "collect"
-          ? "按上方提示书写，停顿 1.2 秒自动保存"
-          : "在此书写 · 支持笔 / 触控 / 鼠标";
+        state.mode === "collect" ? "按上方提示书写，停顿 1.2 秒自动保存" : "在此书写 · 支持手写笔 / 触控 / 鼠标";
       padhint.classList.remove("hide");
       setStatus(state.mode === "collect" ? "采集模式：写一个存一个" : "输入模式");
       refreshTargetUI();
@@ -456,7 +542,7 @@
   $("shiftBtn").onclick = (e) => {
     state.shift = !state.shift;
     e.currentTarget.classList.toggle("on", state.shift);
-    casebadge.textContent = state.shift ? "大小写：Shift 强制大写态" : "大小写：自动";
+    casebadge.textContent = state.shift ? "大小写：Shift 强制大写" : "大小写：自动";
     renderCandidates();
   };
 
@@ -464,14 +550,6 @@
     appendChar(" ");
     state.lineHeights = [];
     setStatus("空格");
-  };
-  $("backBtn").onclick = () => {
-    if (state.text.length) {
-      state.text = state.text.slice(0, -1);
-      textEl.textContent = state.text;
-      if (!state.text.length) phEl.style.display = "";
-      refreshWords();
-    }
   };
   $("clearBtn").onclick = () => {
     state.strokes = [];
@@ -482,9 +560,9 @@
     textEl.textContent = "";
     phEl.style.display = "";
     candbar.innerHTML = '<div class="cand empty">书写后显示候选</div>';
+    wordbar.innerHTML = "";
     padhint.classList.remove("hide");
     setStatus("已清空");
-    refreshWords();
   };
   $("commitBtn").onclick = () => commit();
   $("copyBtn").onclick = async () => {
@@ -496,15 +574,13 @@
     }
   };
   $("skipBtn").onclick = () => advanceTarget();
-
   $("undoBtn").onclick = async () => {
     const res = await postJSON("/api/undo", { split: state.split });
     if (!res.ok) {
       setStatus(res.error || "撤销失败", true);
       return;
     }
-    const c = currentCounts();
-    c[res.removed] = res.count;
+    currentCounts()[res.removed] = res.count;
     state.strokes = [];
     clearPad();
     refreshTargetUI();
@@ -516,28 +592,28 @@
     refreshTargetUI();
   };
   quotaEl.onchange = () => {
-    state.quota = Math.max(1, Number(quotaEl.value) || 12);
+    state.quota = Math.max(1, Number(quotaEl.value) || 10);
     refreshTargetUI();
   };
   splitSel.onchange = () => {
     state.split = splitSel.value;
     state.counts = currentCounts();
-    setStatus(state.split === "test" ? "注意：当前写入的是**测试集**，不要用于训练" : "当前写入训练集");
+    fillTargets();
+    setStatus(state.split === "test" ? "注意：当前写入测试集，不参与训练" : "当前写入训练集");
   };
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter") commit();
-    else if (e.key === "Backspace") $("backBtn").click();
     else if (e.key === "Escape") $("clearBtn").click();
   });
 
   /* ------------------------------------------------------------------ 启动 */
+  window.addEventListener("resize", resize);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(pad);
   resize();
   loadState().then(() => {
-    // 支持 ?mode=collect 直接进入采集模式（便于分享链接/截图）
     const q = new URLSearchParams(location.search);
-    const m = q.get("mode");
-    if (m === "collect") document.querySelector('.tab[data-mode="collect"]').click();
+    if (q.get("mode") === "collect") document.querySelector('.tab[data-mode="collect"]').click();
     const preset = q.get("text");
     if (preset) {
       state.text = preset;
@@ -546,5 +622,4 @@
       refreshWords();
     }
   });
-  setInterval(loadState, 15000);
 })();
