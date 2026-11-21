@@ -215,13 +215,16 @@ Homoglyph groups such as `{0,O,o}`, `{1,I,l,|}`, `{2,Z,z}`, `{5,S,s}` are disamb
 ## 🛠️ Building from Source
 
 ```bat
+python -m src.export_npz           :: export weights to numpy (bakes BN into conv)
 python tools/fetch_webview2.py     :: download WebView2 SDK (~10 MB)
 python tools/build_shell_cs.py     :: compile the native shell (Roslyn csc from Visual Studio)
 python tools/build_launcher.py     :: compile the single-file launcher TonhTzeIME.exe
 python tools/build_dist.py         :: assemble dist\TonhTzeIME\
 ```
 
-Requirements: Python 3.10+, Visual Studio with the C++ desktop workload (for Roslyn `csc.exe`), and the WebView2 Runtime (shipped with Edge). No .NET SDK is required.
+**Client requirements: Python 3.10+ with `numpy` and `Pillow` — nothing else.** PyTorch is *not* needed to run the IME; it is only used for training and for exporting the weights (`python -m src.export_npz`, which bakes BatchNorm into the convolutions and writes `data/model/glyph100.npz`, ~1.1 MB). The runtime forward pass is plain numpy and matches PyTorch to 7e-07.
+
+Building the native shell also needs Visual Studio with the C++ desktop workload (for Roslyn `csc.exe`) and the WebView2 Runtime (shipped with Edge). No .NET SDK is required.
 
 Training (optional):
 
@@ -480,13 +483,16 @@ MNIST 的 42 个错误集中在四组混淆：
 ## 🛠️ 从源码构建
 
 ```bat
+python -m src.export_npz           :: 把权重导成 numpy 格式（BN 折进卷积）
 python tools/fetch_webview2.py     :: 下载 WebView2 SDK（约 10 MB）
 python tools/build_shell_cs.py     :: 编译原生外壳（用 Visual Studio 自带的 Roslyn csc）
 python tools/build_launcher.py     :: 编译单文件启动器 TonhTzeIME.exe
 python tools/build_dist.py         :: 组装 dist\TonhTzeIME\
 ```
 
-环境要求：Python 3.10+、装有 C++ 桌面工作负载的 Visual Studio（为了 Roslyn `csc.exe`）、以及 WebView2 运行时（随 Edge 安装）。**不需要 .NET SDK**。
+**客户端要求：Python 3.10+，外加 `numpy` 与 `Pillow`，仅此而已。** 运行输入法**不需要 PyTorch**；PyTorch 只在训练和导出权重时用到（`python -m src.export_npz` 会把 BatchNorm 折进卷积，产出 `data/model/glyph100.npz`，约 1.1 MB）。运行时是纯 numpy 前向，与 PyTorch 的最大概率差 7e-07。
+
+编译原生外壳另需装有 C++ 桌面工作负载的 Visual Studio（为了 Roslyn `csc.exe`）与 WebView2 运行时（随 Edge 安装）。**不需要 .NET SDK**。
 
 训练（可选）：
 

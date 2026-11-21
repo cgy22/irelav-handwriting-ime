@@ -25,7 +25,11 @@ DIST = os.path.join(ROOT, "dist", "TonhTzeIME")
 INCLUDE_DIRS = ["app", "src"]
 INCLUDE_FILES = ["start_ime.cmd"]
 DATA_FILES = [os.path.join("data", "words.json")]
-MODEL_FILES = [os.path.join("runs", "exp2_final", "best.pt")]
+# 客户端只需要导出的 numpy 权重；.pt 是训练产物，不进分发包
+MODEL_FILES = [
+    os.path.join("data", "model", "glyph100.npz"),
+    os.path.join("data", "model", "glyph100.json"),
+]
 
 SKIP_PATTERNS = ("__pycache__", ".pyc", ".runtime", ".vendor")
 

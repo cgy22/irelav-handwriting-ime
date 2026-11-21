@@ -22,7 +22,6 @@ from typing import Dict, List
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
-import torch
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _ROOT = os.path.dirname(_HERE)
@@ -31,7 +30,6 @@ if _ROOT not in sys.path:
 
 from src import canon  # noqa: E402
 from src.charset import CLASSES, DIGITS, case_pair, to_identity  # noqa: E402
-from src.models import GlyphNet, MnistNet  # noqa: E402
 
 STATIC = os.path.join(_HERE, "static")
 USER_DIR = os.environ.get("MNIST_USER_DIR", os.path.join(_ROOT, "data", "user"))
@@ -102,20 +100,41 @@ class Recognizer:
         self.model = None
         self.classes: List[str] = []
         self.name = "未加载"
+        self.backend = "numpy"
         self._load()
 
     def _load(self) -> None:
+        """加载识别模型。
+
+        客户端只需要推理：优先用导出的 numpy 权重（data/model/glyph100.npz），
+        这样分发包不需要 PyTorch/XPU，体积小一个数量级。
+        只有找不到 numpy 权重时才回退到 .pt（开发机上比较常见）。
+        """
+        npz = os.path.join(_ROOT, "data", "model", "glyph100.npz")
+        if os.path.exists(npz):
+            from src.infer_np import NumpyGlyphNet
+
+            net = NumpyGlyphNet(npz)
+            self.model = net
+            self.classes = list(net.classes)
+            self.name = "TonhTze Handwriting v1.0 · 100 类"
+            self.backend = "numpy"
+            print(f"[rec] 已加载 {self.name}（numpy 推理，{len(self.classes)} 类）", flush=True)
+            return
+
+        try:
+            import torch
+            from src.models import GlyphNet, MnistNet
+        except Exception as e:
+            print(f"[rec] 没有 numpy 权重也没有 PyTorch: {e}", flush=True)
+            return
+
         final = os.path.join(_ROOT, "runs", "exp2_final", "best.pt")
         exp2 = os.path.join(_ROOT, "runs", "exp2_ext", "best.pt")
         exp1 = os.path.join(_ROOT, "runs", "exp1_mnist", "best.pt")
-        if os.path.exists(final):
-            ck = torch.load(final, map_location="cpu")
-            classes = list(ck.get("classes", CLASSES))
-            m = GlyphNet(len(classes))
-            m.load_state_dict(ck["model"])
-            self.model, self.classes, self.name = m, classes, "TonhTze Handwriting v1.0 · 100 类"
-        elif os.path.exists(exp2):
-            ck = torch.load(exp2, map_location="cpu")
+        if os.path.exists(final) or os.path.exists(exp2):
+            path = final if os.path.exists(final) else exp2
+            ck = torch.load(path, map_location="cpu")
             classes = list(ck.get("classes", CLASSES))
             m = GlyphNet(len(classes))
             m.load_state_dict(ck["model"])
@@ -128,18 +147,21 @@ class Recognizer:
         else:
             return
         self.model.eval()
-        print(f"[rec] 已加载 {self.name}，{len(self.classes)} 类", flush=True)
+        self.backend = "torch"
+        print(f"[rec] 已加载 {self.name}，{len(self.classes)} 类（torch 推理）", flush=True)
 
     def reload(self) -> None:
         with _lock:
             self._load()
 
-    @torch.no_grad()
     def infer(self, gray28: np.ndarray) -> np.ndarray:
         if self.model is None:
             raise RuntimeError("模型未加载")
+        if getattr(self, "backend", "numpy") == "numpy":
+            return self.model.predict(gray28)
+        import torch
         x = torch.from_numpy(gray28)[None, None].float()
-        with _lock:
+        with _lock, torch.no_grad():
             logits = self.model(x)
         return torch.softmax(logits.float(), 1)[0].numpy()
 
