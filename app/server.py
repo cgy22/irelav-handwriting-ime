@@ -49,9 +49,16 @@ class Recognizer:
         self._load()
 
     def _load(self) -> None:
+        final = os.path.join(_ROOT, "runs", "exp2_final", "best.pt")
         exp2 = os.path.join(_ROOT, "runs", "exp2_ext", "best.pt")
         exp1 = os.path.join(_ROOT, "runs", "exp1_mnist", "best.pt")
-        if os.path.exists(exp2):
+        if os.path.exists(final):
+            ck = torch.load(final, map_location="cpu")
+            classes = list(ck.get("classes", CLASSES))
+            m = GlyphNet(len(classes))
+            m.load_state_dict(ck["model"])
+            self.model, self.classes, self.name = m, classes, "exp2_final 100类(含你的笔迹)"
+        elif os.path.exists(exp2):
             ck = torch.load(exp2, map_location="cpu")
             classes = list(ck.get("classes", CLASSES))
             m = GlyphNet(len(classes))
@@ -205,9 +212,22 @@ def append_sample(split: str, label: str, strokes, canvas: Dict[str, float]) -> 
 
 
 def _read_all(split: str) -> List[dict]:
+    """读取样本；与训练侧保持一致，跳过 meta.json 里被隔离的历史错标样本。
+
+    否则会出现"面板显示 0 已写满 11 个、训练侧却只有 0 个"的错位，
+    用户永远补不到这个类。
+    """
     p = collect_path(split)
     if not os.path.exists(p):
         return []
+    cutoff = 0.0
+    meta = os.path.join(USER_DIR, "meta.json")
+    if os.path.exists(meta):
+        try:
+            with open(meta, "r", encoding="utf-8") as f:
+                cutoff = float(json.load(f).get("exclude_before", 0.0) or 0.0)
+        except Exception:
+            cutoff = 0.0
     out = []
     with open(p, "r", encoding="utf-8") as f:
         for line in f:
@@ -215,9 +235,11 @@ def _read_all(split: str) -> List[dict]:
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                r = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if float(r.get("ts", 0) or 0) >= cutoff:
+                out.append(r)
     return out
 
 

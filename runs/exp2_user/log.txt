@@ -1,0 +1,13 @@
+[14:57:20] 用户训练样本 784 条 / 测试样本 197 条
+[14:57:21] 微调前（用户测试集）: acc_id=70.05% acc_exact=65.48%
+[14:57:29] epoch 01 loss=1.5218 user_test acc=89.85%
+[14:57:31] epoch 02 loss=1.4436 user_test acc=92.89%
+[14:57:34] epoch 03 loss=1.4222 user_test acc=94.92%
+[14:57:36] epoch 04 loss=1.4097 user_test acc=94.42%
+[14:57:38] epoch 05 loss=1.3901 user_test acc=95.43%
+[14:57:41] epoch 06 loss=1.3853 user_test acc=96.45%
+[14:57:44] epoch 07 loss=1.3763 user_test acc=95.94%
+[14:57:46] epoch 08 loss=1.3689 user_test acc=95.94%
+[14:57:46] 微调后（用户测试集）: acc_id=96.45% acc_exact=92.89%
+[14:57:46] 净提升: +26.40 个百分点
+[14:57:48] 用户测试集错误样本 14 个，图已保存
