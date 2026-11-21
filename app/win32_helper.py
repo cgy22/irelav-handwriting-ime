@@ -64,17 +64,48 @@ VK = {
     "pageup": 0x21, "pagedown": 0x22,
 }
 
-# 这些窗口类名可能包含可编辑控件：浏览器/编辑器/输入框宿主
-_EDITABLE_HINTS = (
-    "edit", "richedit", "chrome_renderwidgethost", "mozilla", "mozillawindowclass",
-    "windows.ui.core.corewindow", "scintilla", "textbox", "webview", "notepad",
-    "sunawtframe", "internet explorer_server", "wordpadclass",
+# 外壳/桌面类窗口：即便名字里有 edit 也不该弹面板
+_SHELL_CLASSES = (
+    "cabinetwclass", "progman", "workerw", "shell_traywnd", "shell_secondarytraywnd",
+    "tasklistthumbnailwnd", "multitaskingviewframe", "xaml_explorer", "shell_handwritingcanvas",
+)
+
+# 可能承载文字输入的应用类窗口（浏览器、编辑器、Electron、UWP/WinUI、Office 等）。
+# 没有 UI Automation 时说不出"光标是否出现"，只能按应用类型判断；
+# 这个列表覆盖了绝大多数会出输入光标的程序，同时把资源管理器/桌面这类排除在外。
+_EDITOR_HINTS = (
+    "edit", "richedit", "scintilla", "textbox", "notepad", "wordpad",
+    "chrome_widgetwin", "mozilla", "webview", "cef", "electron", "hwndwrapper",
+    "windows.ui.core", "applicationframe", "winui", "sunawtframe",
+    "opusapp", "windowswindow", "glasswindow", "internet explorer_server",
 )
 
 
+def focus_child(hwnd: int) -> int:
+    """取某个窗口所属 GUI 线程的焦点子控件（拿不到时返回 0）。"""
+    try:
+        import ctypes.wintypes as wt
+
+        class GUITHREADINFO(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wt.DWORD), ("flags", wt.DWORD), ("hwndActive", wt.HWND),
+                ("hwndFocus", wt.HWND), ("hwndCapture", wt.HWND),
+                ("hwndMenuOwner", wt.HWND), ("hwndMoveSize", wt.HWND),
+                ("hwndCaret", wt.HWND), ("rcCaret", wt.RECT),
+            ]
+
+        tid = user32.GetWindowThreadProcessId(hwnd, None)
+        info = GUITHREADINFO()
+        info.cbSize = ctypes.sizeof(GUITHREADINFO)
+        if user32.GetGUIThreadInfo(tid, ctypes.byref(info)):
+            return int(info.hwndFocus or 0)
+    except Exception:
+        pass
+    return 0
+
+
 def set_process_dpi_aware() -> None:
-    """让本进程按物理像素工作。不声明的话，窗口坐标/尺寸都会被系统虚拟化，
-    导致"设 1280 得到 640"这类诡异现象。"""
+    """让本进程按物理像素工作（否则窗口坐标会被系统虚拟化）。"""
     try:
         user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
     except Exception:
@@ -94,51 +125,6 @@ def window_dpi(hwnd: int) -> int:
         return 96
 
 
-# ---------------------------------------------------------------- 函数签名
-# 64 位下如果不定 argtypes，Python int 会按 32 位传递，HWND_TOPMOST(-1)
-# 会被零扩展成 0xFFFFFFFF 而不是全 1，SetWindowPos 静默失败。
-user32.SetWindowPos.argtypes = [
-    ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int,
-    ctypes.c_int, ctypes.c_int, ctypes.c_uint,
-]
-user32.SetWindowPos.restype = ctypes.c_bool
-user32.GetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int]
-user32.GetWindowLongW.restype = ctypes.c_long
-user32.SetWindowLongW.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_long]
-user32.SetWindowLongW.restype = ctypes.c_long
-user32.ShowWindow.argtypes = [ctypes.c_void_p, ctypes.c_int]
-user32.GetForegroundWindow.restype = ctypes.c_void_p
-user32.SetForegroundWindow.argtypes = [ctypes.c_void_p]
-user32.GetWindowRect.argtypes = [ctypes.c_void_p, ctypes.POINTER(wt.RECT)]
-user32.IsWindowVisible.argtypes = [ctypes.c_void_p]
-user32.ReleaseCapture.restype = ctypes.c_bool
-
-
-# ---------------------------------------------------------------- 结构体
-class _KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", ctypes.c_ushort),
-        ("wScan", ctypes.c_ushort),
-        ("dwFlags", ctypes.c_ulong),
-        ("time", ctypes.c_ulong),
-        ("dwExtraInfo", ctypes.c_void_p),
-    ]
-
-
-class _INPUTUNION(ctypes.Union):
-    # 必须是 32 字节：KEYBDINPUT 是 24，MOUSEINPUT 是 32，Windows 以 40 字节的 INPUT 为准。
-    # 之前补成 64 导致 sizeof(INPUT)=72，SendInput 直接返回 0。
-    _fields_ = [("ki", _KEYBDINPUT), ("_pad", ctypes.c_byte * 32)]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", ctypes.c_ulong), ("u", _INPUTUNION)]
-
-user32.SendInput.argtypes = [ctypes.c_uint, ctypes.c_void_p, ctypes.c_int]
-user32.SendInput.restype = ctypes.c_uint
-
-
-# ---------------------------------------------------------------- 窗口工具
 def get_foreground() -> int:
     return int(user32.GetForegroundWindow() or 0)
 
@@ -156,21 +142,27 @@ def window_title(hwnd: int) -> str:
 
 
 def is_editable(hwnd: int) -> bool:
-    """粗略判断焦点窗口是否可能是输入框。
+    """判断"这个窗口里是否可能正在输入文字"，用于决定是否弹出手写板。
 
-    浏览器把输入框画在渲染进程里，拿不到真正的 Edit 控件，
-    所以这里把浏览器渲染窗口也当作"可能可编辑"——这正是手写板应该弹出来的场景。
+    策略：先排除外壳/桌面类窗口，再看窗口本身或它的焦点子控件是否属于
+    会承载文本输入的应用类型（浏览器、编辑器、Electron、UWP、Office…）。
+
+    局限：没有 UI Automation 时无法确认"光标真的出现了"，所以像浏览器
+    这种"点正文也可能命中"的情况会误弹；这是为了让"任何输入框都能触发"
+    而做的取舍。
     """
-    if not hwnd:
-        return False
-    if is_our_window(hwnd):
+    if not hwnd or is_our_window(hwnd):
         return False
     cls = window_class(hwnd).lower()
-    if any(h in cls for h in _EDITABLE_HINTS):
+    if any(s in cls for s in _SHELL_CLASSES):
+        return False
+    if any(h in cls for h in _EDITOR_HINTS):
         return True
-    # UWP / WinUI 的输入框宿主
-    if cls.startswith("windows.ui.core") or cls.startswith("applicationframe"):
-        return True
+    child = focus_child(hwnd)
+    if child:
+        fc = window_class(child).lower()
+        if any(h in fc for h in _EDITOR_HINTS):
+            return True
     return False
 
 
@@ -310,6 +302,42 @@ def set_window_icon(hwnd: int, ico_path: str) -> bool:
 
 
 # ---------------------------------------------------------------- 输入注入
+# ------------------------------------------------------------------ SendInput 结构体
+# 注意：INPUT 的大小必须是 40 字节（x64）。用 64 字节的旧写法会被 SendInput 拒收。
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_uint),
+        ("time", ctypes.c_uint),
+        ("dwExtraInfo", ctypes.c_void_p),
+    ]
+
+
+class MOUSEINPUT(ctypes.Structure):
+    _fields_ = [
+        ("dx", ctypes.c_long),
+        ("dy", ctypes.c_long),
+        ("mouseData", ctypes.c_uint),
+        ("dwFlags", ctypes.c_uint),
+        ("time", ctypes.c_uint),
+        ("dwExtraInfo", ctypes.c_void_p),
+    ]
+
+
+class HARDWAREINPUT(ctypes.Structure):
+    _fields_ = [("uMsg", ctypes.c_uint), ("wParamL", ctypes.c_ushort), ("wParamH", ctypes.c_ushort)]
+
+
+class _INPUTUNION(ctypes.Union):
+    _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT), ("hi", HARDWAREINPUT)]
+
+
+class INPUT(ctypes.Structure):
+    _anonymous_ = ("u",)
+    _fields_ = [("type", ctypes.c_uint), ("u", _INPUTUNION)]
+
+
 def _send_inputs(items) -> bool:
     n = len(items)
     if n == 0:

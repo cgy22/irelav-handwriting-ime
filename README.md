@@ -20,8 +20,8 @@ The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be resty
 | :--- | :--- |
 | **Recognition** | 100 classes, 28×28 CNN (299.8 K parameters), ~10 ms per character on CPU |
 | **Input** | Pen / touch / mouse via Pointer Events; pen pressure drives stroke width |
-| **Behaviour** | Starts hidden in the system tray, pops up when an editable field gains focus, hides when focus leaves |
-| **Non-intrusive** | `WS_EX_NOACTIVATE` — writing never steals the caret from the target application |
+| **Behaviour** | Always-on-top floating panel; no auto show/hide, so it never disappears mid-stroke. Clicking the pad hands focus straight back to the field you were typing in |
+| **Non-intrusive** | Focus is returned to the target field on every click and after every insertion, so the caret never gets lost |
 | **Candidates** | Top-6 character candidates (click to replace), word candidates from the conlang dictionary (only `dh` shown) |
 | **Insertion** | Clipboard + `Ctrl+V` injection, far more reliable across applications than synthetic keystrokes |
 | **Keys** | Arrows, Home/End, Backspace, Enter, Tab, Esc, Space, Shift, undo |
@@ -57,12 +57,12 @@ mnist/
 start_ime.cmd
 ```
 
-That starts the HTTP service and the native shell. The panel stays hidden in the tray; click into any text field and it appears near the bottom-right corner.
+That starts the HTTP service and the panel shell. The panel appears immediately, pinned on top near the bottom-right corner. Click into any text field, then write on the pad — the result is inserted at that field's caret.
 
 | Action | How |
 | :--- | :--- |
-| Show / hide panel | `Ctrl+Alt+H`, or tray menu |
-| Quit completely | Tray icon → 退出, or `Ctrl+Alt+Q`, or close the `ime_shell.exe` process |
+| Show / hide panel | `Ctrl+Alt+H` |
+| Quit completely | `Ctrl+Alt+Q`, or tray menu → exit |
 | Drag the panel | Drag the title bar of the panel |
 | Write a character | Write, then pause 1.2 s — it is inserted automatically |
 
@@ -71,11 +71,12 @@ That starts the HTTP service and the native shell. The panel stays hidden in the
 ## 🖊️ Using the IME
 
 1. Click into a text box in any application.
-2. The panel pops up. Write one character on the pad.
-3. Stop writing for 1.2 seconds. The top candidate is inserted at the caret.
+2. Write one character on the panel's pad.
+3. Stop writing for 1.2 seconds. The top candidate is inserted at the caret of that text box.
 4. Wrong character? Click another candidate — the previous character is deleted and replaced.
 5. Keep writing letters to build a word; word candidates appear above the pad.
-6. Click elsewhere and the panel hides itself.
+
+The panel stays on top and is always available. Every click on it returns keyboard focus to the field you were typing in, so the caret never wanders.
 
 The panel never takes keyboard focus, so your cursor stays exactly where it was.
 
@@ -283,8 +284,8 @@ Dorn Hub
 | :--- | :--- |
 | **识别** | 100 类，28×28 CNN（29.98 万参数），CPU 单字约 10 ms |
 | **输入** | 笔 / 触控 / 鼠标统一走 Pointer Events，笔压控制笔锋粗细 |
-| **行为** | 启动后藏在托盘；焦点进入可编辑控件时弹出，离开时收起 |
-| **不打扰** | `WS_EX_NOACTIVATE`，书写全程不夺取目标窗口的光标 |
+| **行为** | 常驻置顶浮层，不做自动显隐（避免写到一半消失）；点一下面板就把焦点还给刚才那个输入框 |
+| **不打扰** | 每次点击面板、每次插入之后都会把焦点还给目标输入框，光标不会丢 |
 | **候选** | Top-6 候选字（点一下替换）；人造语词表候选（只显示 `dh`） |
 | **插入** | 剪贴板 + `Ctrl+V` 注入，跨程序比模拟按键可靠得多 |
 | **按键** | 方向键、Home/End、退格、回车、Tab、Esc、空格、Shift、撤销 |
@@ -320,12 +321,12 @@ mnist/
 start_ime.cmd
 ```
 
-它会拉起 HTTP 服务与原生外壳。面板先藏在托盘里，点进任意输入框后从屏幕右下角弹出。
+它会拉起 HTTP 服务与面板外壳。面板立即出现在屏幕右下角并常驻置顶；点进任意输入框后直接在上面书写，结果会插到那个输入框的光标处。
 
 | 操作 | 方式 |
 | :--- | :--- |
-| 显示 / 隐藏面板 | `Ctrl+Alt+H`，或托盘菜单 |
-| 完全退出 | 托盘图标 → 退出，或 `Ctrl+Alt+Q`，或结束 `ime_shell.exe` 进程 |
+| 显示 / 隐藏面板 | `Ctrl+Alt+H` |
+| 完全退出 | `Ctrl+Alt+Q`，或托盘菜单 → 退出 |
 | 移动面板 | 拖动面板标题栏 |
 | 写一个字 | 写完停顿 1.2 秒，自动插入 |
 
@@ -334,13 +335,12 @@ start_ime.cmd
 ## 🖊️ 怎么用
 
 1. 在任意程序里点进一个输入框。
-2. 面板弹出，在书写区写一个字。
-3. 停笔 1.2 秒，首选候选自动插入到光标处。
+2. 在面板的书写区写一个字。
+3. 停笔 1.2 秒，首选候选自动插入到那个输入框的光标处。
 4. 认错了就点其它候选——上一个字会被删掉并替换。
 5. 连续写字母会积累成词，笔上方出现候选词。
-6. 点到别处，面板自行收起。
 
-面板全程不获取键盘焦点，所以你的光标停在原处一动不动。
+面板常驻置顶，随时可用。每次点击面板都会把键盘焦点还给刚才的输入框，所以光标不会跑掉。
 
 ---
 

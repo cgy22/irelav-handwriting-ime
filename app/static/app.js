@@ -132,6 +132,9 @@
   pad.addEventListener("pointerdown", (e) => {
     if (e.button !== undefined && e.button > 0) return;
     e.preventDefault();
+    // Chromium 窗口点击后会激活自己（NOSACTIVATE 挡不住），
+    // 这里等点击生效后把焦点还给目标输入框；笔迹靠鼠标位置分发，不受影响。
+    setTimeout(() => postJSON("/api/window", { action: "refocus" }).catch(() => {}), 150);
     pad.setPointerCapture(e.pointerId);
     state.pointerId = e.pointerId;
     if (state.commitTimer) { clearTimeout(state.commitTimer); state.commitTimer = null; }
@@ -425,17 +428,9 @@
     });
   }
   async function windowAction(action) {
-    try {
-      const res = await postJSON("/api/window", { action });
-      if (res && res.ok === false) setStatus("窗口控制不可用：请用 start_ime.cmd 启动", true);
-    } catch {
-      setStatus("窗口控制不可用：服务未以桌面外壳启动", true);
-    }
+    // 静默处理：窗口控制由托盘/热键负责，这里不再弹任何提示
+    try { await postJSON("/api/window", { action }); } catch { /* 服务已退出时忽略 */ }
   }
-  const minBtn = $("minBtn");
-  const closeBtn = $("closeBtn");
-  if (minBtn) minBtn.onclick = () => windowAction("hide");
-  if (closeBtn) closeBtn.onclick = () => windowAction("close");
 
   /* -------------------------------------------------------------- 系统按键 */
   async function sendKey(key) {

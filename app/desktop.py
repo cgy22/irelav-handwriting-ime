@@ -39,7 +39,7 @@ import win32_helper as pw  # noqa: E402
 import server as srv  # noqa: E402
 
 # 面板逻辑尺寸（DIP）与窗口标题；标题必须精确匹配，否则会命中同名的资源管理器窗口
-PANEL_W, PANEL_H = 640, 470
+PANEL_W, PANEL_H = 720, 560
 PANEL_TITLE = "TonhTze AI · Handwriting IME"
 PORT = int(os.environ.get("IME_PORT", "8765"))
 RUNTIME = os.path.join(ROOT, ".runtime")
@@ -63,7 +63,7 @@ def _edge_path() -> str | None:
     return None
 
 
-def _wait_window(timeout: float = 20.0) -> int:
+def _wait_window(timeout: float = 25.0) -> int:
     """等 Chromium 窗口出现：按标题匹配，避免抓到用户已有的 Edge 窗口。"""
     end = time.time() + timeout
     while time.time() < end:
@@ -89,7 +89,8 @@ def _find_panel() -> int:
             return True
         if pw.window_title(hwnd) != PANEL_TITLE:
             return True
-        if not pw.window_class(hwnd).startswith("WindowsForms10"):
+        cls = pw.window_class(hwnd)
+        if not (cls.startswith("WindowsForms10") or cls == "Chrome_WidgetWin_1"):
             return True
         found.append(int(hwnd))
         return False
@@ -98,58 +99,199 @@ def _find_panel() -> int:
     return found[0] if found else 0
 
 
-def _place_panel(hwnd: int) -> None:
-    """按 DIP 尺寸放到屏幕右下角。
+GEOM_PATH = None  # 在 main() 里指向 .runtime/window.json
 
-    尺寸必须乘 DPI 缩放：窗口是物理像素，而网页的 CSS 像素是 DIP。
-    200% 缩放下如果只给 640 物理像素，网页只会拿到 320 CSS 像素，界面会被放大一倍。
-    """
+
+def _screen_work_area():
+    rect = wt.RECT()
+    pw.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
+    return rect
+
+
+def _load_geom():
+    """读取上次的窗口几何（物理像素）；越界或损坏则忽略。"""
     try:
-        scale = pw.window_dpi(hwnd) / 96.0
-        w = int(round(PANEL_W * scale))
-        h = int(round(PANEL_H * scale))
-        rect = wt.RECT()
-        pw.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0)  # SPI_GETWORKAREA
-        x = max(0, rect.right - w - 24)
-        y = max(0, rect.bottom - h - 24)
-        pw.move_window(hwnd, x, y, w, h)
-        log(f"面板尺寸 {w}x{h} (DPI {pw.window_dpi(hwnd)}) @ ({x},{y})")
+        if GEOM_PATH and os.path.exists(GEOM_PATH):
+            import json as _json
+            with open(GEOM_PATH, "r", encoding="utf-8") as f:
+                g = _json.load(f)
+            wa = _screen_work_area()
+            w, h = int(g["w"]), int(g["h"])
+            x, y = int(g["x"]), int(g["y"])
+            if w < 320 or h < 240:
+                return None
+            # 至少有一部分落在屏幕里
+            if x + w < 80 or y + h < 80 or x > wa.right - 80 or y > wa.bottom - 80:
+                return None
+            return x, y, w, h
+    except Exception:
+        pass
+    return None
+
+
+def _save_geom() -> None:
+    try:
+        hwnd = state.get("panel")
+        if not hwnd or not GEOM_PATH:
+            return
+        r = wt.RECT()
+        pw.user32.GetWindowRect(hwnd, ctypes.byref(r))
+        import json as _json
+        os.makedirs(os.path.dirname(GEOM_PATH), exist_ok=True)
+        with open(GEOM_PATH, "w", encoding="utf-8") as f:
+            _json.dump({"x": r.left, "y": r.top,
+                        "w": r.right - r.left, "h": r.bottom - r.top}, f)
     except Exception:
         pass
 
 
+def _place_panel(hwnd: int) -> None:
+    """把面板放到上次的位置；没有记录就按默认尺寸停到右下角。
+
+    尺寸用 DIP 定义、按 DPI 换算成物理像素，否则 200% 缩放下网页只拿到一半宽度。
+    """
+    try:
+        saved = _load_geom()
+        if saved:
+            x, y, w, h = saved
+            pw.move_window(hwnd, x, y, w, h)
+            log(f"面板恢复上次位置 ({x},{y}) {w}x{h}")
+            return
+        scale = pw.window_dpi(hwnd) / 96.0
+        w = int(round(PANEL_W * scale))
+        h = int(round(PANEL_H * scale))
+        wa = _screen_work_area()
+        x = max(0, wa.right - w - 24)
+        y = max(0, wa.bottom - h - 24)
+        pw.move_window(hwnd, x, y, w, h)
+        log(f"面板默认尺寸 {w}x{h} (DPI {pw.window_dpi(hwnd)}) @ ({x},{y})")
+    except Exception:
+        pass
+
+
+EDGE_PATHS = [
+    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+]
+
+
+def _edge() -> str | None:
+    for p in EDGE_PATHS:
+        if os.path.exists(p):
+            return p
+    return None
+
+
 def launch_panel() -> None:
+    """启动面板外壳：优先用自绘的 WinForms+WebView2 外壳（无边框、无标题栏），
+    失败或不存在时才回落到 Chromium app 窗口。"""
     url = f"http://127.0.0.1:{PORT}"
 
-    # 只用自带的原生外壳。绝不回落到浏览器 —— 那样会变成"Edge 套壳"，
-    # 一个独立窗口、不进托盘、还会干扰资源管理器。
-    # 两种布局都要支持：
-    #   仓库里     ROOT/dist/TonhTzeIME/native/ime_shell.exe
-    #   分发目录里 ROOT/native/ime_shell.exe
-    candidates = [
-        os.path.join(ROOT, "native", "ime_shell.exe"),
-        os.path.join(ROOT, "dist", "TonhTzeIME", "native", "ime_shell.exe"),
-    ]
-    native = next((c for c in candidates if os.path.exists(c)), candidates[-1])
-    if not os.path.exists(native):
-        log(f"[x] 找不到原生外壳: {native}（先运行 python tools/build_shell_cs.py）")
+    native = None
+    for c in (os.path.join(ROOT, "native", "ime_shell.exe"),
+              os.path.join(ROOT, "dist", "TonhTzeIME", "native", "ime_shell.exe")):
+        if os.path.exists(c):
+            native = c
+            break
+
+    if native and os.environ.get("IME_SHELL", "native") != "edge":
+        state["proc"] = subprocess.Popen([native, url + "?shell=1"])
+        log(f"已启动原生外壳 pid={state['proc'].pid}")
+        hwnd = _wait_window(timeout=20.0)
+        if hwnd:
+            state["panel"] = hwnd
+            pw.register_own_pid(pw._pid_of(hwnd))
+            _style_panel(hwnd)
+            state["visible"] = True
+            log(f"面板 hwnd={hwnd} 已就绪（原生外壳，常驻置顶）")
+            return
+        log("[!] 原生外壳未出现窗口，回落到 Chromium 外壳")
+        try:
+            state["proc"].kill()
+        except Exception:
+            pass
+
+    _launch_chromium(url)
+
+
+def _launch_chromium(url: str) -> None:
+    """回落方案：Chromium app 窗口（自带标题栏，但渲染稳定）。"""
+    edge = _edge()
+    if not edge:
+        log("[x] 既没有原生外壳也找不到 Edge")
         raise SystemExit(2)
-
-    state["proc"] = subprocess.Popen([native, url + "?shell=1"])
-    log(f"已启动原生外壳 pid={state['proc'].pid}")
-    hwnd = _wait_window()
+    profile = os.path.join(RUNTIME, "edge-profile")
+    os.makedirs(profile, exist_ok=True)
+    state["proc"] = subprocess.Popen([
+        edge, f"--app={url}?shell=1", f"--window-size={PANEL_W},{PANEL_H}",
+        f"--user-data-dir={profile}", "--no-first-run", "--no-default-browser-check",
+    ])
+    log(f"已启动 Chromium 外壳 pid={state['proc'].pid}")
+    hwnd = _wait_window(timeout=25.0)
     if not hwnd:
-        log("[x] 原生外壳没有出现窗口，退出（不回落到浏览器）")
+        log("[x] 界面窗口未出现")
         os._exit(3)
-
     state["panel"] = hwnd
     pw.register_own_pid(pw._pid_of(hwnd))
-    pw.strip_frame(hwnd, topmost=True)
-    pw.set_window_icon(hwnd, os.path.join(HERE, "static", "icon.ico"))
-    _place_panel(hwnd)
-    pw.hide_window(hwnd)
-    state["visible"] = False
-    log(f"原生面板 hwnd={hwnd} 已就绪（Mica + 圆角 + 置顶），托盘常驻、按焦点弹出")
+    _style_panel(hwnd)
+    state["visible"] = True
+    log(f"面板 hwnd={hwnd} 已就绪（Chromium 外壳，常驻置顶）")
+
+
+def _apply_frame_styles(hwnd: int) -> None:
+    """只改窗口样式（可重复调用）。"""
+    style = pw.user32.GetWindowLongW(hwnd, -16)
+    style &= ~0x00C00000          # 去掉 WS_CAPTION（标题栏）
+    style |= 0x00040000           # 保留可缩放边缘
+    pw.user32.SetWindowLongW(hwnd, -16, style)
+
+    ex = pw.user32.GetWindowLongW(hwnd, -20)
+    ex |= 0x00000080              # WS_EX_TOOLWINDOW：不进任务栏/Alt-Tab
+    ex |= 0x08000000              # WS_EX_NOACTIVATE
+    ex &= ~0x00040000             # 去掉 WS_EX_APPWINDOW
+    pw.user32.SetWindowLongW(hwnd, -20, ex)
+
+    pw.user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0,
+                           0x0001 | 0x0002 | 0x0010 | 0x0020 | 0x0040)
+
+
+def _style_panel(hwnd: int) -> None:
+    """无边框 + 置顶 + 不进任务栏 + 不抢焦点。"""
+    try:
+        style = pw.user32.GetWindowLongW(hwnd, -16)
+        style &= ~0x00C00000                     # WS_CAPTION
+        style |= 0x00040000                      # WS_THICKFRAME（保留边缘缩放）
+        pw.user32.SetWindowLongW(hwnd, -16, style)
+
+        ex = pw.user32.GetWindowLongW(hwnd, -20)
+        ex |= 0x00000080                         # WS_EX_TOOLWINDOW
+        ex |= 0x08000000                         # WS_EX_NOACTIVATE（点击不抢焦点）
+        ex &= ~0x00040000                        # 去掉 WS_EX_APPWINDOW
+        pw.user32.SetWindowLongW(hwnd, -20, ex)
+
+        pw.user32.SetWindowPos(hwnd, ctypes.c_void_p(-1), 0, 0, 0, 0,
+                               0x0001 | 0x0002 | 0x0010 | 0x0020 | 0x0040)
+        pref = ctypes.c_int(2)                   # DWMWCP_ROUND
+        try:
+            dwm = ctypes.WinDLL("dwmapi")
+            dwm.DwmSetWindowAttribute(ctypes.c_void_p(hwnd), 33,
+                                      ctypes.byref(pref), ctypes.sizeof(pref))
+        except Exception:
+            pass
+        _place_panel(hwnd)
+        pw.show_window(hwnd, focus=False)
+
+        # Edge 在启动后还会重新套一遍自己的窗口边框，所以要重试
+        def _retry():
+            for delay in (0.8, 1.6, 3.0):
+                time.sleep(delay)
+                try:
+                    _apply_frame_styles(hwnd)
+                except Exception:
+                    pass
+        threading.Thread(target=_retry, daemon=True).start()
+    except Exception as e:
+        log(f"样式化失败: {e}")
 
 
 # ---------------------------------------------------------------- 注入
@@ -239,6 +381,7 @@ def _drag_loop(hwnd: int) -> None:
             ny = rect.top + (cur.y - start.y)
             pw.move_window(hwnd, nx, ny)
             time.sleep(0.008)
+        _save_geom()
         # 拖动结束把焦点还给目标输入框
         target = state.get("target")
         if target and not pw.is_our_window(target):
@@ -260,6 +403,7 @@ def do_window(payload) -> bool:
         pw.hide_window(hwnd)
         state["visible"] = False
     elif action == "show":
+        _place_panel(hwnd)
         pw.show_window(hwnd, focus=False)
         state["visible"] = True
     elif action == "close":
@@ -275,11 +419,12 @@ def do_window(payload) -> bool:
             pw.move_window(hwnd, rect.left + dx, rect.top + dy)
         return True
     elif action == "refocus":
-        # 拖动结束后把焦点还给原来那个输入框，避免"拖一下光标就没了"
+        # 把焦点还给最后那个输入框：无论是拖动还是点面板，都不该让目标丢焦点
         target = state.get("target")
-        if target and not pw.is_our_window(target):
-            pw.set_foreground(target)
-            log(f"拖动结束，焦点还给 {target}")
+        if target and not pw.is_our_window(target) and pw.user32.IsWindow(target):
+            if pw.get_foreground() != target:
+                pw.set_foreground(target)
+                log(f"焦点还给 {target} ({pw.window_class(target)})")
     elif action == "topmost":
         pw.set_foreground(hwnd)
     return True
@@ -287,21 +432,17 @@ def do_window(payload) -> bool:
 
 # ---------------------------------------------------------------- 焦点
 def on_focus(hwnd: int, editable: bool) -> None:
-    """输入法的生命周期：焦点进输入框就弹，离开就收。"""
+    """只记录"最后获得焦点的可编辑窗口"，不再自动显示/隐藏面板。
+
+    自动显隐在这台机器上会和"不抢焦点"打架，改成常驻置顶后逻辑更简单可靠：
+    用户点哪，就把哪当输入目标；面板自己永远在，不会因为焦点变化而消失。
+    """
     if not hwnd or pw.is_our_window(hwnd):
         return
     if editable:
-        state["target"] = hwnd
-        if state["auto_show"] and not state["visible"] and state["panel"]:
-            pw.show_window(state["panel"], focus=False)
-            state["visible"] = True
-            log(f"焦点进入输入框 {hwnd}，弹出手写板")
-    else:
-        # 焦点跑到非输入区域：收起面板（托盘里可以再唤出）
-        if state["visible"] and state["panel"] and not state.get("pinned"):
-            pw.hide_window(state["panel"])
-            state["visible"] = False
-            log("焦点离开输入框，收起手写板")
+        if state.get("target") != hwnd:
+            state["target"] = hwnd
+            log(f"输入目标 -> {hwnd} ({pw.window_class(hwnd)})")
 
 
 def _watch_panel_alive() -> None:
@@ -353,7 +494,9 @@ def _kill_stale_listener() -> None:
 
 def main() -> None:
     pw.set_process_dpi_aware()
+    global GEOM_PATH
     os.makedirs(RUNTIME, exist_ok=True)
+    GEOM_PATH = os.path.join(RUNTIME, "window.json")
     log("===== TonhTze 手写输入法 启动 =====")
 
     srv.HOOKS["key"] = inject_key
