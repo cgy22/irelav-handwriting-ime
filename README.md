@@ -2,6 +2,8 @@
 
 <img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-light.svg" alt="TonhTzeAI-logo-v1-light" width="400"><img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-dark.svg" alt="TonhTzeAI-logo-v1-dark" width="400">
 
+**Repository**: <https://github.com/cgy22/irelav-handwriting-ime>
+
 ---
 
 ## ℹ️ About the Project
@@ -33,22 +35,21 @@ The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be resty
 ## 📦 Project Layout
 
 ```
-mnist/
+irelav-handwriting-ime/
 ├─ app/                    runtime
-│  ├─ server.py            HTTP service + inference + collection
-│  ├─ desktop.py           desktop shell: server + focus watcher + hotkeys + injection
+│  ├─ server.py            HTTP service + inference + collection API
+│  ├─ desktop.py           orchestrator: server, hotkeys, injection, geometry
 │  ├─ win32_helper.py      window styling, SendInput, clipboard, foreground tracking
-│  ├─ shell/               C# / WinForms + WebView2 panel, plus the launchers
+│  ├─ shell/               C# WinForms+WebView2 panel, launcher, single-file bootstrap
 │  └─ static/              panel front-end (HTML/CSS/JS)
 ├─ src/                    models, data pipeline, training, evaluation
-├─ tools/                  build / packaging scripts
+├─ tools/                  build and packaging scripts
 ├─ assets/                 logo SVGs (text converted to paths)
-├─ data/                   word list, collected handwriting, caches
-├─ runs/                   training logs, metrics, weights, figures
-├─ dist/TonhTzeIME/        packaged application
-└─ docs/                   images, extra notes
+├─ data/                   word list, numpy weights, collected samples (local only)
+├─ runs/                   metrics and figures (checkpoints are local only)
+├─ dist/                   built artifacts: folder, portable folder, single-file exe
+└─ docs/                   images
 ```
-
 ---
 
 ## 🚀 Quick Start
@@ -57,7 +58,9 @@ Double-click **`TonhTzeIME.exe`**.
 
 That single file finds Python, starts the HTTP service and the panel shell in the background (no console window), then exits. Run it again while the IME is already up and it simply brings the panel back — no duplicate instance.
 
-(`start_ime.cmd` is kept as a developer fallback.) The panel appears immediately, pinned on top near the bottom-right corner. Click into any text field, then write on the pad — the result is inserted at that field's caret.
+(The legacy `start_ime.cmd` is kept for development only.)
+
+The panel appears immediately, pinned on top near the bottom-right corner. Click into any text field, then write on the pad — the result is inserted at that field's caret.
 
 | Action | How |
 | :--- | :--- |
@@ -65,7 +68,7 @@ That single file finds Python, starts the HTTP service and the panel shell in th
 | Show panel only | `Ctrl+Alt+S` |
 | Hide panel only | `Ctrl+Alt+D` |
 | Quit completely | `Ctrl+Alt+Q`, or tray menu → exit |
-| Drag the panel | Drag the title bar of the panel |
+| Move the panel | Drag the blank area at the top of the panel |
 | Write a character | Write, then pause 1.2 s — it is inserted automatically |
 
 ---
@@ -204,7 +207,7 @@ Trained in **6.1 minutes** on the Intel Arc 140V iGPU.
 
 The panel was used to collect **1002 samples covering all 100 classes**, deliberately varying position, size and writing style (for example both printed and cursive `a`).
 
-Before any personalisation the general model scores **72.5 %** on that data, with digits at 96.0 %, upper case 91.4 %, lower case 70.4 % and punctuation 49.7 %.
+Before any personalisation the general model scores **72.5 %** across all 1002 samples, with digits at 96.0 %, upper case 91.4 %, lower case 70.4 % and punctuation 49.7 %. On the 200 samples held out for the fine-tuning split, that same model scores 70.50 % — the two numbers differ only because they cover different sample sets.
 
 Fine-tuning on 802 samples and evaluating on 200 held-out samples:
 
@@ -346,7 +349,6 @@ Datasets, the WebView2 SDK and other third-party components are covered by their
 * EMNIST — Gregory Cohen, Saeed Afshar, Jonathan Tapson, André van Schaik (data from NIST SD19)
 * WebView2 — Microsoft
 * PyTorch, NumPy, Pillow, SciPy, Matplotlib, fontTools — their respective authors
-* The Dorn Hub design language provided the colour tokens and visual grammar
 
 ---
 
@@ -365,6 +367,8 @@ Dorn Hub
 # ✍️ TonhTze 手写输入法
 
 <img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-light.svg" alt="TonhTzeAI-logo-v1-light" width="400"><img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-dark.svg" alt="TonhTzeAI-logo-v1-dark" width="400">
+
+**仓库**：<https://github.com/cgy22/irelav-handwriting-ime>
 
 ---
 
@@ -397,20 +401,20 @@ Dorn Hub
 ## 📦 目录结构
 
 ```
-mnist/
+irelav-handwriting-ime/
 ├─ app/                    运行期
-│  ├─ server.py            HTTP 服务 + 推理 + 采集
-│  ├─ desktop.py           桌面外壳：服务 + 焦点监听 + 热键 + 注入
+│  ├─ server.py            HTTP 服务 + 推理 + 采集接口
+│  ├─ desktop.py           编排层：服务、热键、注入、窗口几何
 │  ├─ win32_helper.py      窗口样式、SendInput、剪贴板、前台窗口跟踪
-│  ├─ shell/               C# / WinForms + WebView2 面板，以及两个启动器
+│  ├─ shell/               C# WinForms+WebView2 面板、启动器、单文件引导器
 │  └─ static/              面板前端（HTML/CSS/JS）
 ├─ src/                    模型、数据管线、训练与评估
 ├─ tools/                  构建与打包脚本
 ├─ assets/                 Logo SVG（文字已转路径）
-├─ data/                   词表、采集到的手写样本、缓存
-├─ runs/                   训练日志、指标、权重、图表
-├─ dist/TonhTzeIME/        打包好的应用
-└─ docs/                   图片与补充说明
+├─ data/                   词表、numpy 权重、采集样本（仅本地）
+├─ runs/                   指标与图表（权重仅本地保留）
+├─ dist/                   构建产物：文件夹版、便携版、单文件 exe
+└─ docs/                   图片
 ```
 
 ---
@@ -429,7 +433,7 @@ mnist/
 | 只显示面板 | `Ctrl+Alt+S` |
 | 只隐藏面板 | `Ctrl+Alt+D` |
 | 完全退出 | `Ctrl+Alt+Q`，或托盘菜单 → 退出 |
-| 移动面板 | 拖动面板标题栏 |
+| 移动面板 | 拖动面板顶部的空白处 |
 | 写一个字 | 写完停顿 1.2 秒，自动插入 |
 
 ---
@@ -566,7 +570,7 @@ Arc 140V 上的 4096³ 矩阵乘：
 
 用面板采集了 **1002 条、覆盖全部 100 类**的样本，采集时刻意变化了位置、大小与写法（例如 `a` 的印刷体与手写体都写）。
 
-在没有任何个性化之前，通用模型在这批数据上只有 **72.5%**：数字 96.0%、大写 91.4%、小写 70.4%、标点 49.7%。
+在没有任何个性化之前，通用模型在这 1002 条数据上只有 **72.5%**：数字 96.0%、大写 91.4%、小写 70.4%、标点 49.7%。而在微调划分出的那 200 条留出样本上，同一个模型是 70.50%——两个数字口径不同，并不矛盾。
 
 用其中 802 条微调、200 条留出评估：
 
@@ -708,7 +712,6 @@ python tools/pack_single.py        :: 单文件自解压 exe
 * EMNIST —— Gregory Cohen、Saeed Afshar、Jonathan Tapson、André van Schaik（数据源自 NIST SD19）
 * WebView2 —— Microsoft
 * PyTorch、NumPy、Pillow、SciPy、Matplotlib、fontTools —— 各自的作者
-* Dorn Hub 的设计语言提供了配色令牌与视觉语法
 
 ---
 
