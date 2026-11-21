@@ -303,7 +303,7 @@ Datasets, the WebView2 SDK and other third-party components are covered by their
 
 ## ©️ Copyright
 
-Copyright © 2026 TonhTze AI. All rights reserved.
+Copyright © 2026 TonhTze AI. All rights reserved.  
 Copyright © 2021-2026 Dorn Hub. All rights reserved.
 
 A toast with Prickly Pear juice!
@@ -616,7 +616,7 @@ python tools/pack_single.py        :: 单文件自解压 exe
 
 ## ©️ 版权信息
 
-Copyright © 2026 TonhTze AI. All rights reserved.
+Copyright © 2026 TonhTze AI. All rights reserved.  
 Copyright © 2021-2026 Dorn Hub. All rights reserved.
 
 敬上一杯刺梨汁
