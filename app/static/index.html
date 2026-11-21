@@ -16,7 +16,8 @@
       <span class="brand-dot"></span>
       <span>手写输入法</span>
     </div>
-    <div class="tabs">
+    <!-- 开发模式下才出现的模式切换（生产环境不该让用户看到"采集"） -->
+    <div class="tabs dev-only">
       <button class="tab active" data-mode="input">输入</button>
       <button class="tab" data-mode="collect">采集</button>
     </div>

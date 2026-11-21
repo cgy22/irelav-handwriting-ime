@@ -4,7 +4,7 @@
 启动顺序
 --------
 1. 起本地 HTTP 服务（复用 app/server.py，端口 8765）
-2. 用 Edge 的 app 模式开一个 Chromium 窗口（无地址栏、无标签页）
+2. 启动自带的原生外壳（C# + WebView2），窗口无边框、圆角、Mica、不进任务栏
 3. 去掉系统标题栏 + 加圆角 + 置顶  -> 看起来是一个现代浮层
 4. 注册全局热键 Ctrl+Alt+H（显示/隐藏面板）
 5. 监听前台窗口：焦点进入可编辑控件时自动弹出手写板
@@ -38,11 +38,9 @@ if ROOT not in sys.path:
 import win32_helper as pw  # noqa: E402
 import server as srv  # noqa: E402
 
-EDGE_CANDIDATES = [
-    r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-    r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
-]
+# 面板逻辑尺寸（DIP）与窗口标题；标题必须精确匹配，否则会命中同名的资源管理器窗口
 PANEL_W, PANEL_H = 640, 470
+PANEL_TITLE = "TonhTze AI · Handwriting IME"
 PORT = int(os.environ.get("IME_PORT", "8765"))
 RUNTIME = os.path.join(ROOT, ".runtime")
 
@@ -77,17 +75,24 @@ def _wait_window(timeout: float = 20.0) -> int:
 
 
 def _find_panel() -> int:
-    """按标题找我们的面板窗口（避免抓到用户已有的 Edge 窗口）。"""
+    """精确找到我们的面板窗口。
+
+    不能用"标题以 TonhTze 开头"这种模糊匹配 —— 用户打开的
+    `TonhTzeIME` 文件夹（资源管理器窗口）会被误判成面板，被改样式、被隐藏，
+    表现得就像"启动程序把文件资源管理器弄坏了"。
+    """
     found: list[int] = []
     WNDENUMPROC = ctypes.WINFUNCTYPE(wt.BOOL, wt.HWND, wt.LPARAM)
 
     def cb(hwnd, _):
         if not pw.user32.IsWindowVisible(hwnd):
             return True
-        if pw.window_title(hwnd).startswith("TonhTze"):
-            found.append(int(hwnd))
-            return False
-        return True
+        if pw.window_title(hwnd) != PANEL_TITLE:
+            return True
+        if not pw.window_class(hwnd).startswith("WindowsForms10"):
+            return True
+        found.append(int(hwnd))
+        return False
 
     pw.user32.EnumWindows(WNDENUMPROC(cb), 0)
     return found[0] if found else 0
@@ -114,78 +119,37 @@ def _place_panel(hwnd: int) -> None:
 
 
 def launch_panel() -> None:
-    edge = _edge_path()
     url = f"http://127.0.0.1:{PORT}"
 
-    # 优先用自带的原生外壳（WinForms + WebView2 + Mica）
-    native = os.path.join(ROOT, "dist", "TonhTzeIME", "native", "ime_shell.exe")
-    if os.path.exists(native):
-        state["proc"] = subprocess.Popen([native, url])
-        log(f"已启动原生外壳 pid={state['proc'].pid}")
-        hwnd = _wait_window()
-        if hwnd:
-            state["panel"] = hwnd
-            pw.register_own_pid(pw._pid_of(hwnd))
-            pw.strip_frame(hwnd, topmost=True)
-            pw.set_window_icon(hwnd, os.path.join(HERE, "static", "icon.ico"))
-            _place_panel(hwnd)
-            pw.hide_window(hwnd)
-            state["visible"] = False
-            log(f"原生面板 hwnd={hwnd} 已就绪（Mica + 圆角 + 置顶），托盘常驻、按焦点弹出")
-            return
-        log("原生外壳未出现窗口，退回 Edge")
+    # 只用自带的原生外壳。绝不回落到浏览器 —— 那样会变成"Edge 套壳"，
+    # 一个独立窗口、不进托盘、还会干扰资源管理器。
+    # 两种布局都要支持：
+    #   仓库里     ROOT/dist/TonhTzeIME/native/ime_shell.exe
+    #   分发目录里 ROOT/native/ime_shell.exe
+    candidates = [
+        os.path.join(ROOT, "native", "ime_shell.exe"),
+        os.path.join(ROOT, "dist", "TonhTzeIME", "native", "ime_shell.exe"),
+    ]
+    native = next((c for c in candidates if os.path.exists(c)), candidates[-1])
+    if not os.path.exists(native):
+        log(f"[x] 找不到原生外壳: {native}（先运行 python tools/build_shell_cs.py）")
+        raise SystemExit(2)
 
-    if edge:
-        profile = os.path.join(RUNTIME, "edge-profile")
-        os.makedirs(profile, exist_ok=True)
-        args = [
-            edge,
-            f"--app={url}",
-            f"--window-size={PANEL_W},{PANEL_H}",
-            f"--user-data-dir={profile}",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-features=Translate,msEdgeTranslate",
-            "--disable-session-crashed-bubble",
-            "--hide-crash-restore-bubble",
-        ]
-        state["proc"] = subprocess.Popen(args)
-        log(f"已启动 Edge app 模式 pid={state['proc'].pid}")
-    else:
-        import webbrowser
-
-        webbrowser.open(url)
-        log("未找到 Edge，退回默认浏览器（无边框样式不可用）")
-
+    state["proc"] = subprocess.Popen([native, url + "?shell=1"])
+    log(f"已启动原生外壳 pid={state['proc'].pid}")
     hwnd = _wait_window()
-    if hwnd:
-        state["panel"] = hwnd
-        pw.register_own_pid(pw._pid_of(hwnd))
-        pw.strip_frame(hwnd, topmost=True)
-        pw.set_window_icon(hwnd, os.path.join(HERE, "static", "icon.ico"))
-        _place_panel(hwnd)
-        log(f"面板窗口 hwnd={hwnd} 已美化（无边框+圆角+置顶）")
+    if not hwnd:
+        log("[x] 原生外壳没有出现窗口，退出（不回落到浏览器）")
+        os._exit(3)
 
-        def _reapply():
-            # Chromium 启动过程中会替换窗口句柄，这里每次都重新定位一遍，
-            # 确保美化和定位作用在"最终那个"窗口上。
-            for _ in range(5):
-                time.sleep(1.0)
-                try:
-                    h = _find_panel() or state["panel"]
-                    if not h:
-                        continue
-                    state["panel"] = h
-                    pw.register_own_pid(pw._pid_of(h))
-                    pw.strip_frame(h, topmost=True)
-                    pw.set_window_icon(h, os.path.join(HERE, "static", "icon.ico"))
-                    _place_panel(h)
-                except Exception:
-                    pass
-
-        threading.Thread(target=_reapply, daemon=True).start()
-    else:
-        log("未等到面板窗口，样式化跳过")
+    state["panel"] = hwnd
+    pw.register_own_pid(pw._pid_of(hwnd))
+    pw.strip_frame(hwnd, topmost=True)
+    pw.set_window_icon(hwnd, os.path.join(HERE, "static", "icon.ico"))
+    _place_panel(hwnd)
+    pw.hide_window(hwnd)
+    state["visible"] = False
+    log(f"原生面板 hwnd={hwnd} 已就绪（Mica + 圆角 + 置顶），托盘常驻、按焦点弹出")
 
 
 # ---------------------------------------------------------------- 注入

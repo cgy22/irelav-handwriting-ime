@@ -25,7 +25,7 @@ The panel is rendered by Chromium (HTML/CSS inside WebView2), so it can be resty
 | **Candidates** | Top-6 character candidates (click to replace), word candidates from the conlang dictionary (only `dh` shown) |
 | **Insertion** | Clipboard + `Ctrl+V` injection, far more reliable across applications than synthetic keystrokes |
 | **Keys** | Arrows, Home/End, Backspace, Enter, Tab, Esc, Space, Shift, undo |
-| **Collection mode** | Built-in labelled data collection; the panel doubles as a dataset recorder |
+| **Collection mode** | Labelled data collection for development (`?dev=1`); hidden in the shipped panel |
 | **Personalisation** | Fine-tuning on your own handwriting lifts accuracy from 70.5 % to 95.5 % on held-out samples |
 
 ---
@@ -288,7 +288,7 @@ Dorn Hub
 | **候选** | Top-6 候选字（点一下替换）；人造语词表候选（只显示 `dh`） |
 | **插入** | 剪贴板 + `Ctrl+V` 注入，跨程序比模拟按键可靠得多 |
 | **按键** | 方向键、Home/End、退格、回车、Tab、Esc、空格、Shift、撤销 |
-| **采集模式** | 内置带标注的数据采集，面板同时是数据集录制器 |
+| **采集模式** | 开发用的带标注数据采集（`?dev=1` 才出现），生产界面不显示 |
 | **个性化** | 用你自己的笔迹微调，留出样本上从 70.5% 提升到 95.5% |
 
 ---

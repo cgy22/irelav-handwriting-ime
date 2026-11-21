@@ -27,7 +27,14 @@
   const splitSel = $("splitSel");
   const quotaEl = $("quota");
 
-  const DEBUG = new URLSearchParams(location.search).has("debug");
+  const QS = new URLSearchParams(location.search);
+  const DEBUG = QS.has("debug");
+  const SHELL = QS.has("shell");        // 由原生外壳启动（有系统钩子）
+  const DEV = QS.has("dev") || DEBUG;   // 开发模式：显示采集入口
+
+  // 生产环境不出现"输入 / 采集"与窗口按钮
+  document.body.classList.toggle("shell", SHELL);
+  document.body.classList.toggle("dev", DEV);
 
   const state = {
     mode: "input",
@@ -413,8 +420,10 @@
       setStatus("窗口控制不可用：服务未以桌面外壳启动", true);
     }
   }
-  $("minBtn").onclick = () => windowAction("hide");
-  $("closeBtn").onclick = () => windowAction("close");
+  const minBtn = $("minBtn");
+  const closeBtn = $("closeBtn");
+  if (minBtn) minBtn.onclick = () => windowAction("hide");
+  if (closeBtn) closeBtn.onclick = () => windowAction("close");
 
   /* -------------------------------------------------------------- 系统按键 */
   async function sendKey(key) {
@@ -497,6 +506,9 @@
   resize();
   loadState().then(() => {
     const q = new URLSearchParams(location.search);
-    if (q.get("mode") === "collect") document.querySelector('.tab[data-mode="collect"]').click();
+    if (DEV && q.get("mode") === "collect") {
+      const t2 = document.querySelector('.tab[data-mode="collect"]');
+      if (t2) t2.click();
+    }
   });
 })();

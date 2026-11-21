@@ -68,6 +68,9 @@ def main() -> int:
     if not os.path.exists(exe):
         print("[!] 还没有原生外壳：先运行 python tools/build_shell_cs.py")
 
+    # 运行期缓存（WebView2 profile）不随包分发，体积能省几十 MB
+    shutil.rmtree(os.path.join(DIST, ".runtime"), ignore_errors=True)
+
     total = 0
     for base, _dirs, files in os.walk(DIST):
         for f in files:

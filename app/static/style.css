@@ -216,3 +216,8 @@ body {
 
 /* 表头里的按钮不能拖动，否则点不到 */
 .ime-head button, .ime-head .tab, .ime-head .winctl { -webkit-app-region: no-drag; app-region: no-drag; }
+
+/* 生产/开发模式的可见性控制 */
+body:not(.dev) .dev-only { display: none !important; }
+/* 网页模式下没有系统钩子，窗口按钮不该出现 */
+body:not(.shell) .winctl { display: none !important; }
