@@ -128,18 +128,13 @@ Preserving the aspect ratio matters: the identity of `-`, `|`, `'`, `.` lives in
 
 ## 🖥️ Training Environment
 
-Everything below was measured on the machine that produced the shipped weights.
-
 ### 🧾 Hardware
 
 | Part | Specification |
 | :--- | :--- |
-| Machine | LENOVO 83JQ (Intel Lunar Lake platform) |
 | CPU | Intel Core Ultra 7 258V — 8 cores / 8 threads (4 P-cores + 4 LP E-cores), 2.2 GHz base, 12 MB L3 |
-| Memory | 31.5 GB LPDDR5X, on-package, shared with the integrated GPU |
-| GPU | Intel Arc 140V iGPU — 16 GB shared, 64 EUs, 8 subslices, driver 32.0.101.8860, Level Zero 1.15.38308 |
-| NPU | Intel AI Boost (PCI `8086:643E`), 47 TOPS INT8 — present but **not used** (see below) |
-| OS | Windows 11 Pro for Workstations Insider Preview, build 26340 |
+| GPU | Intel Arc 140V iGPU — 16 GB shared memory, 64 EUs, 8 subslices, driver 32.0.101.8860, Level Zero 1.15.38308 |
+| OS | Windows 11 Pro for Workstations, build 26340 |
 
 ### 🧰 Software Stack
 
@@ -152,7 +147,6 @@ Everything below was measured on the machine that produced the shipped weights.
 | SciPy | 1.18.1 |
 | Matplotlib | 3.11.2 |
 | fontTools | 4.67.0 |
-| Compiler | MSVC 14.51 / Roslyn `csc` from Visual Studio 18 (native shell only) |
 
 ### ⚡ Measured Compute
 
@@ -163,9 +157,7 @@ Everything below was measured on the machine that produced the shipped weights.
 | fp32 | **3.20 TFLOP/s** |
 | bf16 | **18.65 TFLOP/s** |
 
-That 5.8× gap is why training runs under `bf16` autocast.
-
-Single glyph inference (same 28×28 input, batch 1):
+Single glyph inference (28×28 input, batch 1):
 
 | Backend | Latency |
 | :--- | :--- |
@@ -180,10 +172,6 @@ Single glyph inference (same 28×28 input, batch 1):
 | Experiment ① | 12 epochs × 60 000 images | CPU | 5.8 min |
 | Experiment ② | 12 epochs × 150 000 images | Arc 140V, bf16 | 6.1 min |
 | Final personalisation | 6 epochs × 1 002 samples × 8 | Arc 140V, bf16 | 3.7 min |
-
-### 🧠 Why the NPU Stays Idle
-
-The NPU is reachable only through OpenVINO (or ONNX Runtime's OpenVINO EP), and neither publishes **cp315** wheels yet. More importantly, the 100-class model has 299.8 K parameters (≈5 MFLOP) — a single NPU dispatch costs more than the whole computation, so there is nothing to gain. The client therefore stays on plain numpy, which keeps the download at 2.5 MB instead of shipping a second runtime.
 
 ---
 
@@ -502,18 +490,13 @@ mnist/
 
 ## 🖥️ 训练环境
 
-以下数据全部在产出这批权重的同一台机器上实测。
-
 ### 🧾 硬件
 
 | 部件 | 规格 |
 | :--- | :--- |
-| 整机 | LENOVO 83JQ（Intel Lunar Lake 平台） |
 | CPU | Intel Core Ultra 7 258V —— 8 核 / 8 线程（4 个 P-core + 4 个 LP E-core），2.2 GHz 基频，12 MB L3 |
-| 内存 | 31.5 GB LPDDR5X，封装内，与核显共享 |
-| 显卡 | Intel Arc 140V 核显 —— 16 GB 共享，64 EU，8 个 subslice，驱动 32.0.101.8860，Level Zero 1.15.38308 |
-| NPU | Intel AI Boost（PCI `8086:643E`），47 TOPS INT8 —— 存在但**未使用**（原因见下） |
-| 系统 | Windows 11 Pro for Workstations Insider Preview，Build 26340 |
+| 显卡 | Intel Arc 140V 核显 —— 16 GB 共享内存，64 EU，8 个 subslice，驱动 32.0.101.8860，Level Zero 1.15.38308 |
+| 系统 | Windows 11 Pro for Workstations，Build 26340 |
 
 ### 🧰 软件栈
 
@@ -526,7 +509,6 @@ mnist/
 | SciPy | 1.18.1 |
 | Matplotlib | 3.11.2 |
 | fontTools | 4.67.0 |
-| 编译器 | MSVC 14.51 / Visual Studio 18 自带 Roslyn `csc`（仅原生外壳用到） |
 
 ### ⚡ 实测算力
 
@@ -537,9 +519,7 @@ Arc 140V 上的 4096³ 矩阵乘：
 | fp32 | **3.20 TFLOP/s** |
 | bf16 | **18.65 TFLOP/s** |
 
-相差 5.8 倍，这就是训练一律开 `bf16` autocast 的原因。
-
-单字推理（同一张 28×28 输入，batch 1）：
+单字推理（28×28 输入，batch 1）：
 
 | 后端 | 延迟 |
 | :--- | :--- |
@@ -554,10 +534,6 @@ Arc 140V 上的 4096³ 矩阵乘：
 | 实验① | 12 轮 × 6 万张 | CPU | 5.8 分钟 |
 | 实验② | 12 轮 × 15 万张 | Arc 140V，bf16 | 6.1 分钟 |
 | 最终个性化 | 6 轮 × 1002 条 × 8 | Arc 140V，bf16 | 3.7 分钟 |
-
-### 🧠 NPU 为什么闲着
-
-NPU 目前只能通过 OpenVINO（或 ONNX Runtime 的 OpenVINO EP）访问，而两者都还没有 **cp315** 的 wheel。更关键的是：100 类模型只有 29.98 万参数（约 5 MFLOP），**一次 NPU 调度本身的开销就超过整个计算量**，用了也没有收益。所以客户端保持在纯 numpy 上——这也让下载体积停在 2.5 MB，而不是再塞一个运行时。
 
 ---
 
