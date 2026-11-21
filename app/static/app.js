@@ -9,6 +9,7 @@
   const pad = $("pad");
   const ctx = pad.getContext("2d", { desynchronized: true });
   const candbar = $("candbar");
+  const wordbar = $("wordbar");
   const textEl = $("text");
   const phEl = $("ph");
   const statusEl = $("status");
@@ -198,6 +199,7 @@
       canvas: { w: pad.clientWidth, h: pad.clientHeight },
       line_heights: state.lineHeights,
       context: state.text.slice(-8),
+      prefix: currentPrefix(),
     });
     if (res.error) {
       setStatus(res.error, true);
@@ -267,6 +269,50 @@
     state.text += ch;
     phEl.style.display = "none";
     textEl.textContent = state.text;
+    refreshWords();
+  }
+
+  /* 当前正在拼写的词前缀（结尾连续字母 / 撇号 / 连字符） */
+  function currentPrefix() {
+    if (state.mode === "collect") return "";
+    const m = state.text.match(/[A-Za-z\u00C0-\u024F'\u2018\u2019-]+$/);
+    return m ? m[0] : "";
+  }
+
+  let wordTimer = null;
+  function refreshWords() {
+    if (wordTimer) clearTimeout(wordTimer);
+    wordTimer = setTimeout(async () => {
+      const prefix = currentPrefix();
+      if (!prefix) {
+        wordbar.innerHTML = "";
+        return;
+      }
+      try {
+        const r = await fetch(`/api/suggest?prefix=${encodeURIComponent(prefix)}&limit=10`);
+        const d = await r.json();
+        if (!d.items || !d.items.length) {
+          wordbar.innerHTML = "";
+          return;
+        }
+        wordbar.innerHTML = "";
+        for (const w of d.items) {
+          const el = document.createElement("button");
+          el.className = "word";
+          el.title = `${w.dh}（${w.type || "?"}）${w.cn}`;
+          el.innerHTML = `<span class="dh">${escapeHtml(w.dh)}</span><span class="cn">${escapeHtml((w.cn || "").slice(0, 10))}</span>`;
+          el.onclick = () => {
+            const rest = w.dh.slice(prefix.length);
+            if (rest) appendChar(rest);
+            setStatus(`选词 ${w.dh} → ${w.cn}`);
+            refreshWords();
+          };
+          wordbar.appendChild(el);
+        }
+      } catch {
+        wordbar.innerHTML = "";
+      }
+    }, 120);
   }
 
   function pickCandidate(i) {
@@ -424,6 +470,7 @@
       state.text = state.text.slice(0, -1);
       textEl.textContent = state.text;
       if (!state.text.length) phEl.style.display = "";
+      refreshWords();
     }
   };
   $("clearBtn").onclick = () => {
@@ -437,6 +484,7 @@
     candbar.innerHTML = '<div class="cand empty">书写后显示候选</div>';
     padhint.classList.remove("hide");
     setStatus("已清空");
+    refreshWords();
   };
   $("commitBtn").onclick = () => commit();
   $("copyBtn").onclick = async () => {
@@ -487,8 +535,16 @@
   resize();
   loadState().then(() => {
     // 支持 ?mode=collect 直接进入采集模式（便于分享链接/截图）
-    const m = new URLSearchParams(location.search).get("mode");
+    const q = new URLSearchParams(location.search);
+    const m = q.get("mode");
     if (m === "collect") document.querySelector('.tab[data-mode="collect"]').click();
+    const preset = q.get("text");
+    if (preset) {
+      state.text = preset;
+      phEl.style.display = "none";
+      textEl.textContent = preset;
+      refreshWords();
+    }
   });
   setInterval(loadState, 15000);
 })();

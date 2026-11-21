@@ -19,7 +19,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 import torch
@@ -38,6 +38,58 @@ USER_DIR = os.environ.get("MNIST_USER_DIR", os.path.join(_ROOT, "data", "user"))
 PORT = int(os.environ.get("IME_PORT", "8765"))
 
 _lock = threading.Lock()
+
+# ------------------------------------------------------------------ 词表
+WORDS_PATH = os.path.join(_ROOT, "data", "words.json")
+_WORDS = []
+_PREFIXES = set()
+_BY_PREFIX = {}
+
+
+def load_words() -> None:
+    """载入人造语词表（dh=罗马字拼写, cn=中文义, type=词性）。
+
+    同时建立"所有合法前缀"集合：它既用于候选词，也用于反向约束单字识别——
+    如果当前前缀是 "ton"，那么下一个字母只有能构成合法词的才应该被优先。
+    """
+    global _WORDS, _PREFIXES, _BY_PREFIX
+    if not os.path.exists(WORDS_PATH):
+        print("[words] 找不到 data/words.json，候选词功能关闭", flush=True)
+        return
+    with open(WORDS_PATH, "r", encoding="utf-8") as f:
+        _WORDS = json.load(f)
+    pref, by = set(), {}
+    for i, w in enumerate(_WORDS):
+        dh = w["dh"]
+        for k in range(1, len(dh) + 1):
+            p = dh[:k]
+            pref.add(p)
+            by.setdefault(p, []).append(i)
+    _PREFIXES, _BY_PREFIX = pref, by
+    print(f"[words] 载入 {len(_WORDS)} 条，合法前缀 {len(pref)} 个", flush=True)
+
+
+def suggest(prefix: str, limit: int = 12):
+    """按前缀返回候选词：完全相等优先，其次短词优先。"""
+    ids = _BY_PREFIX.get(prefix, [])
+    ids = sorted(ids, key=lambda i: (0 if _WORDS[i]["dh"] == prefix else 1, len(_WORDS[i]["dh"]), _WORDS[i]["dh"]))
+    return [_WORDS[i] for i in ids[:limit]]
+
+
+def lm_bonus(classes, prefix: str) -> np.ndarray:
+    """用词表反向约束单字：只有能让前缀继续成为合法词的字母才加分。
+
+    前缀本身不合法、或没有任何候选能延续时，不加分（避免把用户带进死路）。
+    """
+    bonus = np.zeros(len(classes))
+    if not prefix or prefix not in _PREFIXES:
+        return bonus
+    hit = 0
+    for i, ch in enumerate(classes):
+        if prefix + ch in _PREFIXES:
+            bonus[i] += 2.0
+            hit += 1
+    return bonus if hit else np.zeros(len(classes))
 
 
 # --------------------------------------------------------------------- 模型
@@ -154,7 +206,8 @@ def ambiguity_bonus(classes: List[str], ctx: str) -> np.ndarray:
     return bonus
 
 
-def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6, ctx: str = ""):
+def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6, ctx: str = "",
+               payload_prefix: str = ""):
     """大小写先验 + 上下文先验重排，并按身份去重。"""
     logits = np.log(np.clip(probs, 1e-8, 1.0)).astype(np.float64)
     for i, ch in enumerate(classes):
@@ -163,6 +216,7 @@ def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6, 
         elif ch.islower() or ch in "æœê":
             logits[i] -= prior
     logits += ambiguity_bonus(classes, ctx)
+    logits += lm_bonus(classes, payload_prefix)
     # 展示用的置信度必须跟着重排后的分数走，否则会出现"第一候选 16%、第二候选 69%"的怪象
     adj = np.exp(logits - logits.max())
     adj /= adj.sum()
@@ -252,6 +306,7 @@ def counts_by_class(split: str) -> Dict[str, int]:
 
 # --------------------------------------------------------------------- HTTP
 REC = Recognizer()
+load_words()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -308,6 +363,11 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/reload":
             REC.reload()
             self._json({"ok": True, "model": REC.name})
+        elif path == "/api/suggest":
+            q = parse_qs(urlparse(self.path).query)
+            prefix = (q.get("prefix") or [""])[0]
+            limit = int((q.get("limit") or ["12"])[0])
+            self._json({"prefix": prefix, "items": suggest(prefix, limit) if prefix else []})
         else:
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
@@ -349,7 +409,8 @@ class Handler(BaseHTTPRequestHandler):
         if not heights:
             # 行首没有参照高度：默认偏小写（符合输入法习惯），Shift 可强制大写
             prior = -0.3
-        top = candidates(probs, REC.classes, prior, ctx=payload.get("context") or "")
+        top = candidates(probs, REC.classes, prior, ctx=payload.get("context") or "",
+                         payload_prefix=payload.get("prefix") or "")
         ms = (time.perf_counter() - t0) * 1000
         hint = "upper" if prior > 0.5 else ("lower" if prior < -0.5 else "unknown")
         self._json({"top": top, "ms": round(ms, 1), "case_hint": hint, "height": round(met["height"], 1)})
