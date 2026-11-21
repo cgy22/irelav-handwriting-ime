@@ -216,8 +216,40 @@ def inject_key(key: str):
     return ok, "" if ok else f"未知按键: {key}"
 
 
+VK_LBUTTON = 0x01
+
+
+def _drag_loop(hwnd: int) -> None:
+    """跟着鼠标移动窗口。
+
+    用"按下时的光标位置"和"按下时的窗口位置"做绝对位移，不做累加：
+    每一帧都是 win_start + (cursor - cursor_start)，不会像逐帧 delta 那样漂移。
+    """
+    try:
+        pw.user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+        pw.user32.GetCursorPos.argtypes = [ctypes.POINTER(wt.POINT)]
+        start = wt.POINT()
+        pw.user32.GetCursorPos(ctypes.byref(start))
+        rect = wt.RECT()
+        pw.user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        while pw.user32.GetAsyncKeyState(VK_LBUTTON) & 0x8000:
+            cur = wt.POINT()
+            pw.user32.GetCursorPos(ctypes.byref(cur))
+            nx = rect.left + (cur.x - start.x)
+            ny = rect.top + (cur.y - start.y)
+            pw.move_window(hwnd, nx, ny)
+            time.sleep(0.008)
+        # 拖动结束把焦点还给目标输入框
+        target = state.get("target")
+        if target and not pw.is_our_window(target):
+            pw.set_foreground(target)
+    except Exception as e:
+        log(f"拖动异常: {e}")
+
+
 def do_drag() -> None:
-    pw.start_drag(state["panel"])
+    if state.get("panel"):
+        threading.Thread(target=_drag_loop, args=(state["panel"],), daemon=True).start()
 
 
 def do_window(payload) -> bool:

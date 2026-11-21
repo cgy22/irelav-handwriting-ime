@@ -290,10 +290,6 @@ namespace TonhTzeIME
         {
             try
             {
-                // 打开 Chromium 的"可拖动区域"特性：配合 CSS 的 app-region: drag，
-                // 拖动由窗口管理器原生完成，不会出现逐帧 SetWindowPos 的卡顿/闪动。
-                Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-                    "--enable-features=msWebView2EnableDraggableRegions");
                 var env = await CoreWebView2Environment.CreateAsync(null, _userDataDir);
                 await _web.EnsureCoreWebView2Async(env);
 

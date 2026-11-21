@@ -411,7 +411,19 @@
   }
 
   /* ------------------------------------------------------------ 窗口控制 */
-  // 拖动由 CSS 的 app-region: drag 交给 Windows 原生处理（见 style.css）
+  // 拖动：表头按下时请求服务端发送 WM_NCLBUTTONDOWN，由 Windows 自己跑拖动循环，
+  // 比 JS 逐帧 SetWindowPos 平滑，也不会和 WebView 的重绘打架。
+  const head = document.querySelector(".ime-head");
+  if (head) {
+    head.addEventListener("pointerdown", (e) => {
+      if (e.target.closest("button")) return;
+      fetch("/api/drag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {});
+    });
+  }
   async function windowAction(action) {
     try {
       const res = await postJSON("/api/window", { action });
