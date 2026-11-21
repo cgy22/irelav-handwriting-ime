@@ -64,6 +64,12 @@ def main() -> int:
     for f in DATA_FILES + MODEL_FILES:
         copy_tree(f)
 
+    launcher = os.path.join(ROOT, "TonhTzeIME.exe")
+    if os.path.exists(launcher):
+        shutil.copy2(launcher, os.path.join(DIST, "TonhTzeIME.exe"))
+    else:
+        print("[!] 还没有启动器：先运行 python tools/build_launcher.py")
+
     exe = os.path.join(DIST, "native", "ime_shell.exe")
     if not os.path.exists(exe):
         print("[!] 还没有原生外壳：先运行 python tools/build_shell_cs.py")

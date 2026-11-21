@@ -53,11 +53,11 @@ mnist/
 
 ## 🚀 Quick Start
 
-```bat
-start_ime.cmd
-```
+Double-click **`TonhTzeIME.exe`**.
 
-That starts the HTTP service and the panel shell. The panel appears immediately, pinned on top near the bottom-right corner. Click into any text field, then write on the pad — the result is inserted at that field's caret.
+That single file finds Python, starts the HTTP service and the panel shell in the background (no console window), then exits. Run it again while the IME is already up and it simply brings the panel back — no duplicate instance.
+
+(`start_ime.cmd` is kept as a developer fallback.) The panel appears immediately, pinned on top near the bottom-right corner. Click into any text field, then write on the pad — the result is inserted at that field's caret.
 
 | Action | How |
 | :--- | :--- |
@@ -217,6 +217,7 @@ Homoglyph groups such as `{0,O,o}`, `{1,I,l,|}`, `{2,Z,z}`, `{5,S,s}` are disamb
 ```bat
 python tools/fetch_webview2.py     :: download WebView2 SDK (~10 MB)
 python tools/build_shell_cs.py     :: compile the native shell (Roslyn csc from Visual Studio)
+python tools/build_launcher.py     :: compile the single-file launcher TonhTzeIME.exe
 python tools/build_dist.py         :: assemble dist\TonhTzeIME\
 ```
 
@@ -319,11 +320,11 @@ mnist/
 
 ## 🚀 快速开始
 
-```bat
-start_ime.cmd
-```
+双击 **`TonhTzeIME.exe`**。
 
-它会拉起 HTTP 服务与面板外壳。面板立即出现在屏幕右下角并常驻置顶；点进任意输入框后直接在上面书写，结果会插到那个输入框的光标处。
+这一个文件会自己找到 Python，在后台拉起 HTTP 服务与面板外壳（不弹黑框），然后自己退出。如果已经在运行，再双击它只会把面板叫出来，不会重复启动。
+
+（`start_ime.cmd` 保留给开发调试用。）面板立即出现在屏幕右下角并常驻置顶；点进任意输入框后直接在上面书写，结果会插到那个输入框的光标处。
 
 | 操作 | 方式 |
 | :--- | :--- |
@@ -481,6 +482,7 @@ MNIST 的 42 个错误集中在四组混淆：
 ```bat
 python tools/fetch_webview2.py     :: 下载 WebView2 SDK（约 10 MB）
 python tools/build_shell_cs.py     :: 编译原生外壳（用 Visual Studio 自带的 Roslyn csc）
+python tools/build_launcher.py     :: 编译单文件启动器 TonhTzeIME.exe
 python tools/build_dist.py         :: 组装 dist\TonhTzeIME\
 ```
 
