@@ -33,6 +33,18 @@ MODEL_FILES = [
 
 SKIP_PATTERNS = ("__pycache__", ".pyc", ".runtime", ".vendor")
 
+# WebView2 / Edge 的运行时缓存，绝不能进分发包
+JUNK_DIRS = [
+    "EBWebView", "GrShaderCache", "ShaderCache", "DawnGraphiteCache", "DawnWebGPUCache",
+    "BrowserMetrics", "Default", "Cache_Data", "GPUCache", "Shared Dictionary",
+    "shared_proto_db", "component_crx_cache", "Crashpad", "Session Storage", "Local Storage",
+    "Extension Scripts", "Extension Rules", "Extension State", "AutofillStrikeDatabase",
+    "AutofillAiModelCache", "BudgetDatabase", "ClientCertificates", "EdgeSessions",
+    "AvailabilityDB", "optimization_guide_hint_cache_store", "parcel_tracking_db",
+    "commerce_subscription_db", "discounts_db", "discount_infos_db", "Site Characteristics Database",
+    "No_Vary_Search", "RemoteData", "metadata", "wasm", "cache", "js", "index-dir",
+]
+
 
 def ignore(_dir, names):
     return [n for n in names if any(p in n for p in SKIP_PATTERNS)]
@@ -80,6 +92,8 @@ def main() -> int:
 
     # 运行期缓存（WebView2 profile）不随包分发，体积能省几十 MB
     shutil.rmtree(os.path.join(DIST, ".runtime"), ignore_errors=True)
+    for junk in JUNK_DIRS:
+        shutil.rmtree(os.path.join(DIST, junk), ignore_errors=True)
 
     total = 0
     for base, _dirs, files in os.walk(DIST):
