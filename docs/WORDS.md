@@ -1,6 +1,6 @@
 # 词表与候选词
 
-`wordData.js` 是人造语词典（`dh` = 罗马字拼写，`cn` = 中文释义，`type` = 词性），
+`data/source/wordData.js` 是人造语词典（`dh` = 罗马字拼写，`cn` = 中文释义，`type` = 词性），
 本工程把它接入手写输入法，做两件事：
 
 1. **候选词**：边写边给出以当前前缀开头的词，点一下补全
@@ -12,7 +12,7 @@
 `wordData.js` 是带模板字符串的 JS，不要用正则硬啃。用 Node 求值后转成 JSON：
 
 ```bat
-node -e "const fs=require('fs');eval(fs.readFileSync('wordData.js','utf8'));fs.writeFileSync('data/words.json',JSON.stringify(globalThis.wordData))"
+node -e "const fs=require('fs');eval(fs.readFileSync('data/source/wordData.js','utf8'));fs.writeFileSync('data/words.json',JSON.stringify(globalThis.wordData))"
 ```
 
 当前 `data/words.json`：**2818 条**，`dh` 长度 1–15。

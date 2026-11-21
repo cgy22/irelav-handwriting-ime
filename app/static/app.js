@@ -404,39 +404,7 @@
   }
 
   /* ------------------------------------------------------------ 窗口控制 */
-  // 面板不激活，不能靠系统标题栏拖动：把表头拖动换算成位移发给服务端。
-  // dx/dy 是 CSS 像素，必须乘 devicePixelRatio 才是物理像素，
-  // 否则 200% 缩放下窗口只移动鼠标位移的一半。
-  const head = document.querySelector(".ime-head");
-  let dragging = null;
-  let lastSent = 0;
-  if (head) {
-    head.addEventListener("pointerdown", (e) => {
-      if (e.target.closest("button")) return;
-      head.setPointerCapture(e.pointerId);
-      dragging = { x: e.clientX, y: e.clientY, id: e.pointerId };
-      e.preventDefault();
-    });
-    head.addEventListener("pointermove", (e) => {
-      if (!dragging || e.pointerId !== dragging.id) return;
-      const now = performance.now();
-      if (now - lastSent < 16) return;
-      const ratio = window.devicePixelRatio || 1;
-      const dx = Math.round((e.clientX - dragging.x) * ratio);
-      const dy = Math.round((e.clientY - dragging.y) * ratio);
-      if (!dx && !dy) return;
-      dragging.x = e.clientX;
-      dragging.y = e.clientY;
-      lastSent = now;
-      postJSON("/api/window", { action: "move", dx, dy }).catch(() => {});
-    });
-    const stopDrag = (e) => {
-      if (dragging && e.pointerId === dragging.id) dragging = null;
-    };
-    head.addEventListener("pointerup", stopDrag);
-    head.addEventListener("pointercancel", stopDrag);
-  }
-
+  // 拖动由 CSS 的 app-region: drag 交给 Windows 原生处理（见 style.css）
   async function windowAction(action) {
     try {
       const res = await postJSON("/api/window", { action });

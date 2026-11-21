@@ -14,12 +14,21 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-NATIVE = os.path.join(ROOT, "native")
+NATIVE = os.path.join(ROOT, "app", "shell")
 PKG = os.path.join(ROOT, ".vendor", "webview2", "pkg")
 OUT_DIR = os.path.join(ROOT, "dist", "TonhTzeIME", "native")
 OUT_EXE = os.path.join(OUT_DIR, "ime_shell.exe")
 
-CSC = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+# 优先用 VS 的 Roslyn 编译器：系统自带的 Framework csc 只支持 C# 5，
+# 不认 => 表达式属性、字符串插值等写法。
+CSC_CANDIDATES = [
+    r"C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
+    r"C:\Program Files\Microsoft Visual Studio\17\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
+    r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\Roslyn\csc.exe",
+    r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe",
+]
+CSC = next((c for c in CSC_CANDIDATES if os.path.exists(c)),
+           r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe")
 FW = r"C:\Windows\Microsoft.NET\Framework64\v4.0.30319"
 
 
@@ -36,8 +45,9 @@ def main() -> int:
             return 1
 
     os.makedirs(OUT_DIR, exist_ok=True)
+    print(f"[build] 编译器: {CSC}")
     args = [
-        CSC, "/nologo", "/target:winexe", "/platform:x64", "/optimize+",
+        CSC, "/nologo", "/target:winexe", "/platform:x64", "/optimize+", "/langversion:7.3",
         f"/out:{OUT_EXE}",
         f"/r:{os.path.join(FW, 'System.dll')}",
         f"/r:{os.path.join(FW, 'System.Drawing.dll')}",
@@ -45,6 +55,7 @@ def main() -> int:
         f"/r:{core}",
         f"/r:{winforms}",
         f"/win32manifest:{os.path.join(NATIVE, 'app.manifest')}",
+        f"/win32icon:{os.path.join(ROOT, 'app', 'static', 'icon.ico')}",
         os.path.join(NATIVE, "Program.cs"),
     ]
     print("[build] 编译 Program.cs ...")

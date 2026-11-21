@@ -39,7 +39,7 @@ PORT = int(os.environ.get("IME_PORT", "8765"))
 
 _lock = threading.Lock()
 
-# 生产外壳（app/production.py）会把这些钩子换成真实的 Win32 实现；
+# 生产外壳（app/desktop.py）会把这些钩子换成真实的 Win32 实现；
 # 单独跑 server.py 时保持 None，接口返回 501，前端会给出提示。
 HOOKS = {"key": None, "send": None, "drag": None, "window": None}
 

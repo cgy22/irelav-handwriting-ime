@@ -67,6 +67,9 @@ body {
   flex: 0 0 auto;
   cursor: move;
   user-select: none;
+  /* 交给 Chromium 的原生拖动：平滑、无闪烁，不依赖 JS 逐帧挪窗口 */
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; letter-spacing: .2px; }
 .brand-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
@@ -210,3 +213,6 @@ body {
 }
 .winctl button:hover { background: var(--secondary); color: var(--text); }
 #closeBtn:hover { background: rgba(209, 52, 56, .12); color: var(--danger); }
+
+/* 表头里的按钮不能拖动，否则点不到 */
+.ime-head button, .ime-head .tab, .ime-head .winctl { -webkit-app-region: no-drag; app-region: no-drag; }

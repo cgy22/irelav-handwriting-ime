@@ -35,7 +35,7 @@ if HERE not in sys.path:
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-import platform_win as pw  # noqa: E402
+import win32_helper as pw  # noqa: E402
 import server as srv  # noqa: E402
 
 EDGE_CANDIDATES = [
@@ -276,6 +276,12 @@ def do_window(payload) -> bool:
             pw.user32.GetWindowRect(hwnd, ctypes.byref(rect))
             pw.move_window(hwnd, rect.left + dx, rect.top + dy)
         return True
+    elif action == "refocus":
+        # 拖动结束后把焦点还给原来那个输入框，避免"拖一下光标就没了"
+        target = state.get("target")
+        if target and not pw.is_our_window(target):
+            pw.set_foreground(target)
+            log(f"拖动结束，焦点还给 {target}")
     elif action == "topmost":
         pw.set_foreground(hwnd)
     return True

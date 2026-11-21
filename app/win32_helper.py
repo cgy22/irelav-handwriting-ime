@@ -268,7 +268,11 @@ def set_foreground(hwnd: int) -> bool:
         tid_fg = user32.GetWindowThreadProcessId(fg, None) if fg else 0
         tid_me = kernel32.GetCurrentThreadId()
         attached = bool(user32.AttachThreadInput(tid_me, tid_fg, True)) if tid_fg else False
+        # Windows 的前台锁：非前台进程调用 SetForegroundWindow 会被静默忽略。
+        # 先模拟一次 ALT 键，系统就会放行（业界通用的做法）。
+        user32.keybd_event(0x12, 0, 0, 0)
         ok = bool(user32.SetForegroundWindow(hwnd))
+        user32.keybd_event(0x12, 0, 2, 0)
         if attached:
             user32.AttachThreadInput(tid_me, tid_fg, False)
         return ok

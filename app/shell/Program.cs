@@ -42,8 +42,52 @@ namespace TonhTzeIME
 
         public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         public const uint SWP_SHOWWINDOW = 0x0040;
+        public const uint SWP_NOACTIVATE = 0x0010;
         public const int SW_HIDE = 0;
         public const int SW_SHOWNOACTIVATE = 4;
+    }
+
+
+    /// <summary>扁平化的托盘菜单渲染器（默认的 ToolStripProfessionalRenderer 是 Win7 风格）。</summary>
+    internal sealed class ModernMenuRenderer : ToolStripProfessionalRenderer
+    {
+        private static readonly Color Accent = Color.FromArgb(22, 218, 73);
+        private static readonly Color Hover = Color.FromArgb(240, 253, 243);
+
+        public ModernMenuRenderer() : base(new ModernColorTable()) { RoundedEdges = false; }
+
+        protected override void OnRenderMenuItemBackground(ToolStripItemRenderEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            var r = new Rectangle(4, 1, e.Item.Width - 8, e.Item.Height - 2);
+            if (e.Item.Selected)
+            {
+                using (var b = new SolidBrush(Hover)) g.FillRectangle(b, r);
+                using (var p = new Pen(Accent, 3))
+                    g.DrawLine(p, r.Left, r.Top + 3, r.Left, r.Bottom - 3);
+            }
+        }
+
+        protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e)
+        {
+            e.TextColor = e.Item.ForeColor;
+            base.OnRenderItemText(e);
+        }
+
+        protected override void OnRenderToolStripBorder(ToolStripRenderEventArgs e) { }
+
+        private sealed class ModernColorTable : ProfessionalColorTable
+        {
+            public override Color ToolStripDropDownBackground => Color.White;
+            public override Color ImageMarginGradientBegin => Color.White;
+            public override Color ImageMarginGradientMiddle => Color.White;
+            public override Color ImageMarginGradientEnd => Color.White;
+            public override Color MenuBorder => Color.FromArgb(229, 229, 229);
+            public override Color MenuItemSelected => Color.FromArgb(240, 253, 243);
+            public override Color SeparatorDark => Color.FromArgb(238, 238, 238);
+            public override Color SeparatorLight => Color.White;
+        }
     }
 
     internal sealed class ShellForm : Form
@@ -80,6 +124,38 @@ namespace TonhTzeIME
             BuildTray();
         }
 
+
+        private static ToolStripMenuItem MenuItem(string text, EventHandler onClick)
+        {
+            return new ToolStripMenuItem(text, null, onClick)
+            {
+                Padding = new Padding(12, 5, 14, 5),
+                ForeColor = Color.FromArgb(50, 49, 48),
+            };
+        }
+
+        /// <summary>把 WinForms 的方形菜单切成圆角（Win11 的菜单是 8px 圆角）。</summary>
+        private static void RoundMenu(ContextMenuStrip menu)
+        {
+            try
+            {
+                var h = menu.Handle;
+                var r = new Rectangle(0, 0, menu.Width, menu.Height);
+                int d = 12;
+                using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+                {
+                    path.AddArc(r.X, r.Y, d, d, 180, 90);
+                    path.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+                    path.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+                    path.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+                    path.CloseFigure();
+                    using (var rgn = new Region(path))
+                        menu.Region = rgn;
+                }
+            }
+            catch { }
+        }
+
         private void BuildTray()
         {
             _tray = new NotifyIcon
@@ -89,17 +165,33 @@ namespace TonhTzeIME
             };
             try
             {
-                string ico = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                                          "..", "app", "static", "icon.ico");
-                _tray.Icon = File.Exists(ico) ? new Icon(ico) : SystemIcons.Application;
+                // 优先用 exe 自带的图标（csc /win32icon 嵌入），这样托盘图标一定是我们的
+                Icon exeIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+                if (exeIcon != null) { _tray.Icon = exeIcon; }
+                else
+                {
+                    string ico = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                                              "..", "app", "static", "icon.ico");
+                    _tray.Icon = File.Exists(ico) ? new Icon(ico) : SystemIcons.Application;
+                }
             }
             catch { _tray.Icon = SystemIcons.Application; }
 
-            var menu = new ContextMenuStrip();
-            menu.Items.Add("显示面板", null, (s, e) => ShowPanel());
-            menu.Items.Add("隐藏面板", null, (s, e) => HidePanel());
+            var menu = new ContextMenuStrip
+            {
+                Renderer = new ModernMenuRenderer(),
+                ShowImageMargin = false,
+                BackColor = Color.White,
+                Font = new Font("Segoe UI", 9.5f),
+                Padding = new Padding(4, 6, 4, 6),
+            };
+            menu.Items.Add(MenuItem("显示面板", (s2, e2) => ShowPanel()));
+            menu.Items.Add(MenuItem("隐藏面板", (s2, e2) => HidePanel()));
             menu.Items.Add(new ToolStripSeparator());
-            menu.Items.Add("退出", null, (s, e) => QuitApp());
+            var quit = MenuItem("退出", (s2, e2) => QuitApp());
+            quit.ForeColor = Color.FromArgb(209, 52, 56);
+            menu.Items.Add(quit);
+            menu.Opened += (s2, e2) => RoundMenu(menu);
             _tray.ContextMenuStrip = menu;
             _tray.DoubleClick += (s, e) => ShowPanel();
         }
@@ -191,13 +283,17 @@ namespace TonhTzeIME
             var wa = Screen.PrimaryScreen.WorkingArea;
             Native.SetWindowPos(Handle, Native.HWND_TOPMOST,
                                 wa.Right - w - 24, wa.Bottom - h - 24,
-                                w, h, Native.SWP_SHOWWINDOW);
+                                w, h, Native.SWP_SHOWWINDOW | Native.SWP_NOACTIVATE);
         }
 
         private async void InitWebView()
         {
             try
             {
+                // 打开 Chromium 的"可拖动区域"特性：配合 CSS 的 app-region: drag，
+                // 拖动由窗口管理器原生完成，不会出现逐帧 SetWindowPos 的卡顿/闪动。
+                Environment.SetEnvironmentVariable("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                    "--enable-features=msWebView2EnableDraggableRegions");
                 var env = await CoreWebView2Environment.CreateAsync(null, _userDataDir);
                 await _web.EnsureCoreWebView2Async(env);
 
@@ -233,6 +329,7 @@ namespace TonhTzeIME
 
         private const int WM_MOUSEACTIVATE = 0x0021;
         private const int MA_NOACTIVATE = 3;
+        private const int WM_EXITSIZEMOVE = 0x0232;
 
         protected override void WndProc(ref Message m)
         {
@@ -240,6 +337,18 @@ namespace TonhTzeIME
             {
                 m.Result = (IntPtr)MA_NOACTIVATE;
                 return;
+            }
+            if (m.Msg == WM_EXITSIZEMOVE)
+            {
+                // 原生拖动会把窗口激活；等激活状态落定 250ms，再把焦点还给目标输入框
+                var t = new Timer { Interval = 250 };
+                t.Tick += (s2, e2) =>
+                {
+                    t.Stop();
+                    t.Dispose();
+                    PostJson("/api/window", "{\"action\":\"refocus\"}");
+                };
+                t.Start();
             }
             base.WndProc(ref m);
         }
