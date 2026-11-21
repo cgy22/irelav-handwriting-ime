@@ -16,13 +16,27 @@ import numpy as np
 from . import canon
 from .charset import CHAR2IDX, case_pair
 
-USER_DIR = r"F:\mnist\data\user"
+USER_DIR = os.environ.get("MNIST_USER_DIR", r"F:\mnist\data\user")
 
 
-def load_jsonl(split: str) -> List[dict]:
+def _exclude_before() -> float:
+    """读取 data/user/meta.json 里的 exclude_before，用于隔离历史错标样本。"""
+    p = os.path.join(USER_DIR, "meta.json")
+    if not os.path.exists(p):
+        return 0.0
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            return float(json.load(f).get("exclude_before", 0.0) or 0.0)
+    except Exception:
+        return 0.0
+
+
+def load_jsonl(split: str, min_ts: Optional[float] = None) -> List[dict]:
     p = os.path.join(USER_DIR, f"{split}.jsonl")
     if not os.path.exists(p):
         return []
+    if min_ts is None:
+        min_ts = _exclude_before()
     out = []
     with open(p, "r", encoding="utf-8") as f:
         for line in f:
@@ -30,9 +44,11 @@ def load_jsonl(split: str) -> List[dict]:
             if not line:
                 continue
             try:
-                out.append(json.loads(line))
+                r = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            if float(r.get("ts", 0) or 0) >= min_ts:
+                out.append(r)
     return out
 
 

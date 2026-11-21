@@ -82,7 +82,24 @@
   }
 
   function clearPad() {
-    ctx.clearRect(0, 0, pad.width / state.dpr, pad.height / state.dpr);
+    ctx.clearRect(0, 0, pad.clientWidth, pad.clientHeight);
+    paintWatermark();
+  }
+
+  // 采集模式下把目标字符画成书写区里的淡色水印：
+  // 只在小标签上显示目标时，很容易"顺手写别的数字"，标签就会错位。
+  function paintWatermark() {
+    if (state.mode !== "collect") return;
+    const ch = currentTarget();
+    if (!ch) return;
+    ctx.save();
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = "#2f6df6";
+    ctx.font = "190px 'Microsoft YaHei', 'Segoe UI', serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ch === " " ? "␣" : ch, pad.clientWidth / 2, pad.clientHeight / 2);
+    ctx.restore();
   }
 
   function redraw() {
@@ -284,6 +301,7 @@
     const total = Object.values(c).reduce((a, b) => a + b, 0);
     const goal = (state.classes.length || 1) * state.quota;
     tprogEl.textContent = `${n} / ${state.quota}　总计 ${total} / ${goal}`;
+    if (!state.strokes.length && !state.cur) clearPad();
   }
 
   function advanceTarget() {
@@ -314,7 +332,14 @@
     }
     currentCounts()[ch] = res.count;
     const pred = state.candidates.length ? state.candidates[0].ch : "?";
-    setStatus(`已存 "${ch}"（${res.count}）· 模型识别为 "${pred}"`);
+    const pp = state.candidates.length ? state.candidates[0].p : 0;
+    state.lastSaved = { ch, split: state.split };
+    const mismatch = pred !== "?" && pred.toLowerCase() !== ch.toLowerCase() && pp >= 0.55;
+    if (mismatch) {
+      setStatus(`⚠ 已按目标 "${ch}" 保存，但模型读成了 "${pred}"（${(pp * 100).toFixed(0)}%）——写错了请点「撤销上一条」`, true);
+    } else {
+      setStatus(`已存 "${ch}"（${res.count}）· 模型识别为 "${pred}"`);
+    }
     state.strokes = [];
     clearPad();
     refreshTargetUI();
@@ -422,6 +447,20 @@
     }
   };
   $("skipBtn").onclick = () => advanceTarget();
+
+  $("undoBtn").onclick = async () => {
+    const res = await postJSON("/api/undo", { split: state.split });
+    if (!res.ok) {
+      setStatus(res.error || "撤销失败", true);
+      return;
+    }
+    const c = currentCounts();
+    c[res.removed] = res.count;
+    state.strokes = [];
+    clearPad();
+    refreshTargetUI();
+    setStatus(`已撤销一条 "${res.removed}"`);
+  };
 
   targetSel.onchange = () => {
     state.targetIdx = Number(targetSel.value);

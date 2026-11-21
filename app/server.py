@@ -34,7 +34,7 @@ from src.charset import CLASSES, DIGITS, case_pair, to_identity  # noqa: E402
 from src.models import GlyphNet, MnistNet  # noqa: E402
 
 STATIC = os.path.join(_HERE, "static")
-USER_DIR = os.path.join(_ROOT, "data", "user")
+USER_DIR = os.environ.get("MNIST_USER_DIR", os.path.join(_ROOT, "data", "user"))
 PORT = int(os.environ.get("IME_PORT", "8765"))
 
 _lock = threading.Lock()
@@ -252,6 +252,8 @@ class Handler(BaseHTTPRequestHandler):
                 self._handle_recognize(payload)
             elif self.path == "/api/collect":
                 self._handle_collect(payload)
+            elif self.path == "/api/undo":
+                self._handle_undo(payload)
             else:
                 self._json({"error": "not found"}, 404)
         except Exception as e:  # 任何内部异常都回 JSON，不让连接被直接掐断
@@ -280,6 +282,29 @@ class Handler(BaseHTTPRequestHandler):
         ms = (time.perf_counter() - t0) * 1000
         hint = "upper" if prior > 0.5 else ("lower" if prior < -0.5 else "unknown")
         self._json({"top": top, "ms": round(ms, 1), "case_hint": hint, "height": round(met["height"], 1)})
+
+    def _handle_undo(self, payload):
+        """删掉最后一条刚存错的样本（采集时写错/标签不对时用）。"""
+        split = str(payload.get("split") or "train")
+        if split not in ("train", "test"):
+            split = "train"
+        p = collect_path(split)
+        if not os.path.exists(p):
+            self._json({"ok": False, "error": "没有可撤销的样本"})
+            return
+        with open(p, "r", encoding="utf-8") as f:
+            lines = [ln for ln in f.read().splitlines() if ln.strip()]
+        if not lines:
+            self._json({"ok": False, "error": "没有可撤销的样本"})
+            return
+        try:
+            removed = json.loads(lines[-1]).get("label")
+        except json.JSONDecodeError:
+            removed = "?"
+        with open(p, "w", encoding="utf-8") as f:
+            if lines[:-1]:
+                f.write("\n".join(lines[:-1]) + "\n")
+        self._json({"ok": True, "removed": removed, "count": counts_by_class(split).get(removed, 0)})
 
     def _handle_collect(self, payload):
         label = str(payload.get("label") or "")
