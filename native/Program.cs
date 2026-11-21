@@ -1,18 +1,20 @@
 // TonhTze AI 手写输入法 —— 原生外壳（C# / WinForms + WebView2）
 //
-// 为什么是 WinForms 而不是 WinUI 3：
-//   本机没有 .NET SDK（`dotnet --list-sdks` 为空），装 SDK 要几百 MB；
-//   而 Windows 自带 .NET Framework 4.8 的 csc.exe，配合 WebView2 的 net462 程序集
-//   就能直接编译出一个原生窗口。窗口外观由 DWM 负责（Mica + 圆角 + 无边框），
-//   和 WinUI 3 的窗口材质是同一套 API，肉眼没有区别。
+// 定位：这是"输入法面板"，不是普通程序。
+//   * WS_EX_TOOLWINDOW  不进任务栏、不进 Alt-Tab
+//   * WS_EX_NOACTIVATE  点击/书写时不夺取焦点，目标输入框的光标不会掉
+//   * 启动不显示界面，只留托盘图标；焦点进入可编辑控件时由 Python 侧唤出
+//   * 托盘菜单：显示 / 隐藏 / 退出；退出时通知 Python 一起结束
+//   * Python 服务消失（被任务管理器杀掉等）时，外壳自己退出，不留孤儿窗口
 //
-// 这个 exe 只做一件事：把窗口画出来、把网页装进去。
-// 焦点监听、按键注入、HTTP 服务都在 app/production.py。
+// 界面由 WebView2 渲染（app/static），窗口材质交给 DWM（Mica + 圆角）。
 
 using System;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
@@ -35,18 +37,13 @@ namespace TonhTzeIME
         [DllImport("user32.dll")]
         public static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y,
                                                int cx, int cy, uint flags);
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr hwnd, int cmd);
 
         public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
         public const uint SWP_SHOWWINDOW = 0x0040;
-
-        [DllImport("user32.dll")]
-        public static extern bool ReleaseCapture();
-
-        [DllImport("user32.dll")]
-        public static extern IntPtr SendMessage(IntPtr hwnd, int msg, int wparam, int lparam);
-
-        public const int WM_NCLBUTTONDOWN = 0xA1;
-        public const int HTCAPTION = 2;
+        public const int SW_HIDE = 0;
+        public const int SW_SHOWNOACTIVATE = 4;
     }
 
     internal sealed class ShellForm : Form
@@ -54,6 +51,12 @@ namespace TonhTzeIME
         private readonly WebView2 _web;
         private readonly string _url;
         private readonly string _userDataDir;
+        private readonly Timer _healthTimer = new Timer();
+        private NotifyIcon _tray;
+        private int _misses;
+
+        private const int DipW = 640;
+        private const int DipH = 470;
 
         public ShellForm(string url, string userDataDir)
         {
@@ -64,56 +67,110 @@ namespace TonhTzeIME
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
+            ShowInTaskbar = false;
             BackColor = Color.FromArgb(243, 243, 243);
             DoubleBuffered = true;
-            // 尺寸按 DIP 定义，OnLoad 里再按 DeviceDpi 换算成物理像素，
-            // 否则 200% 缩放下网页只拿到一半的 CSS 宽度（文字会被放大得离谱）
             AutoScaleMode = AutoScaleMode.None;
-            Size = new Size(640, 470);
-
-            var wa = Screen.PrimaryScreen.WorkingArea;
-            Location = new Point(wa.Right - Width - 24, wa.Bottom - Height - 24);
+            Size = new Size(DipW, DipH);
 
             _web = new WebView2 { Dock = DockStyle.Fill };
             Controls.Add(_web);
 
             Load += OnLoad;
-            Shown += OnShown;
+            BuildTray();
+        }
+
+        private void BuildTray()
+        {
+            _tray = new NotifyIcon
+            {
+                Text = "TonhTze 手写输入法（点输入框自动弹出）",
+                Visible = true,
+            };
+            try
+            {
+                string ico = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                                          "..", "app", "static", "icon.ico");
+                _tray.Icon = File.Exists(ico) ? new Icon(ico) : SystemIcons.Application;
+            }
+            catch { _tray.Icon = SystemIcons.Application; }
+
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("显示面板", null, (s, e) => ShowPanel());
+            menu.Items.Add("隐藏面板", null, (s, e) => HidePanel());
+            menu.Items.Add(new ToolStripSeparator());
+            menu.Items.Add("退出", null, (s, e) => QuitApp());
+            _tray.ContextMenuStrip = menu;
+            _tray.DoubleClick += (s, e) => ShowPanel();
+        }
+
+        public void ShowPanel()
+        {
+            ApplyDpiSize();
+            Native.ShowWindow(Handle, Native.SW_SHOWNOACTIVATE);
+        }
+
+        public void HidePanel()
+        {
+            Native.ShowWindow(Handle, Native.SW_HIDE);
+        }
+
+        private void PostJson(string path, string json)
+        {
+            try
+            {
+                var req = (HttpWebRequest)WebRequest.Create(_url + path);
+                req.Method = "POST";
+                req.ContentType = "application/json";
+                req.Timeout = 1500;
+                byte[] data = System.Text.Encoding.UTF8.GetBytes(json);
+                req.ContentLength = data.Length;
+                using (var st = req.GetRequestStream()) st.Write(data, 0, data.Length);
+                using (var resp = req.GetResponse()) { }
+            }
+            catch { }
+        }
+
+        private void QuitApp()
+        {
+            PostJson("/api/window", "{\"action\":\"close\"}");
+            _tray.Visible = false;
+            Application.Exit();
         }
 
         private void OnLoad(object sender, EventArgs e)
         {
             ApplyMica();
             ApplyDpiSize();
-            try
-            {
-                string ico = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
-                                          "..", "app", "static", "icon.ico");
-                if (File.Exists(ico)) Icon = new Icon(ico);
-            }
-            catch { }
             InitWebView();
+            HidePanel();          // 启动不显示界面
+
+            _healthTimer.Interval = 3000;
+            _healthTimer.Tick += async (s2, e2) => await CheckServerAsync();
+            _healthTimer.Start();
         }
 
-        private void OnShown(object sender, EventArgs e)
+        private Task CheckServerAsync()
         {
-            ApplyMica();
-            ApplyDpiSize();
-        }
+            return Task.Run(() =>
+            {
+                bool ok = false;
+                try
+                {
+                    var req = (HttpWebRequest)WebRequest.Create(_url + "/api/state");
+                    req.Timeout = 2000;
+                    using (var resp = (HttpWebResponse)req.GetResponse())
+                        ok = (int)resp.StatusCode == 200;
+                }
+                catch { ok = false; }
 
-        // 面板逻辑尺寸（DIP）：宽度 640、高度 470
-        private const int DipW = 640;
-        private const int DipH = 470;
-
-        private void ApplyDpiSize()
-        {
-            double scale = DeviceDpi / 96.0;
-            int w = (int)Math.Round(DipW * scale);
-            int h = (int)Math.Round(DipH * scale);
-            var wa = Screen.PrimaryScreen.WorkingArea;
-            Native.SetWindowPos(Handle, Native.HWND_TOPMOST,
-                                wa.Right - w - 24, wa.Bottom - h - 24,
-                                w, h, Native.SWP_SHOWWINDOW);
+                if (ok) { _misses = 0; return; }
+                if (++_misses >= 3)
+                {
+                    if (_tray != null) _tray.Visible = false;
+                    Application.Exit();
+                }
+            });
         }
 
         private void ApplyMica()
@@ -124,6 +181,17 @@ namespace TonhTzeIME
             int backdrop = Native.DWMSBT_MAINWINDOW;
             Native.DwmSetWindowAttribute(Handle, Native.DWMWA_SYSTEMBACKDROP_TYPE,
                                          ref backdrop, sizeof(int));
+        }
+
+        private void ApplyDpiSize()
+        {
+            double scale = DeviceDpi / 96.0;
+            int w = (int)Math.Round(DipW * scale);
+            int h = (int)Math.Round(DipH * scale);
+            var wa = Screen.PrimaryScreen.WorkingArea;
+            Native.SetWindowPos(Handle, Native.HWND_TOPMOST,
+                                wa.Right - w - 24, wa.Bottom - h - 24,
+                                w, h, Native.SWP_SHOWWINDOW);
         }
 
         private async void InitWebView()
@@ -138,7 +206,6 @@ namespace TonhTzeIME
                 core.Settings.AreDevToolsEnabled = true;
                 core.Settings.IsStatusBarEnabled = false;
                 core.Settings.IsZoomControlEnabled = false;
-                // 透明背景：让 Mica 从窗口透到网页后面
                 _web.DefaultBackgroundColor = Color.Transparent;
 
                 core.Navigate(_url);
@@ -151,9 +218,6 @@ namespace TonhTzeIME
             }
         }
 
-        // 关键：把它做成"输入法面板"而不是普通窗口
-        //   WS_EX_TOOLWINDOW  —— 不进任务栏、不进 Alt-Tab
-        //   WS_EX_NOACTIVATE  —— 点击/书写时不夺取焦点，目标输入框的光标不会掉
         protected override CreateParams CreateParams
         {
             get
@@ -162,12 +226,11 @@ namespace TonhTzeIME
                 const int WS_EX_NOACTIVATE = 0x08000000;
                 CreateParams cp = base.CreateParams;
                 cp.ExStyle |= WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-                cp.ExStyle &= ~0x00040000;   // 去掉 WS_EX_APPWINDOW
+                cp.ExStyle &= ~0x00040000;
                 return cp;
             }
         }
 
-        // 鼠标点上来也不要激活自己
         private const int WM_MOUSEACTIVATE = 0x0021;
         private const int MA_NOACTIVATE = 3;
 
@@ -179,6 +242,12 @@ namespace TonhTzeIME
                 return;
             }
             base.WndProc(ref m);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            _tray.Visible = false;
+            base.OnFormClosing(e);
         }
     }
 

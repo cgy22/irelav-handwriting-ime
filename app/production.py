@@ -129,7 +129,9 @@ def launch_panel() -> None:
             pw.strip_frame(hwnd, topmost=True)
             pw.set_window_icon(hwnd, os.path.join(HERE, "static", "icon.ico"))
             _place_panel(hwnd)
-            log(f"原生面板 hwnd={hwnd} 已就绪（Mica + 圆角 + 置顶）")
+            pw.hide_window(hwnd)
+            state["visible"] = False
+            log(f"原生面板 hwnd={hwnd} 已就绪（Mica + 圆角 + 置顶），托盘常驻、按焦点弹出")
             return
         log("原生外壳未出现窗口，退回 Edge")
 
@@ -260,7 +262,7 @@ def do_window(payload) -> bool:
         pw.hide_window(hwnd)
         state["visible"] = False
     elif action == "show":
-        pw.show_window(hwnd)
+        pw.show_window(hwnd, focus=False)
         state["visible"] = True
     elif action == "close":
         log("用户关闭面板，退出")
@@ -281,6 +283,7 @@ def do_window(payload) -> bool:
 
 # ---------------------------------------------------------------- 焦点
 def on_focus(hwnd: int, editable: bool) -> None:
+    """输入法的生命周期：焦点进输入框就弹，离开就收。"""
     if not hwnd or pw.is_our_window(hwnd):
         return
     if editable:
@@ -288,6 +291,23 @@ def on_focus(hwnd: int, editable: bool) -> None:
         if state["auto_show"] and not state["visible"] and state["panel"]:
             pw.show_window(state["panel"], focus=False)
             state["visible"] = True
+            log(f"焦点进入输入框 {hwnd}，弹出手写板")
+    else:
+        # 焦点跑到非输入区域：收起面板（托盘里可以再唤出）
+        if state["visible"] and state["panel"] and not state.get("pinned"):
+            pw.hide_window(state["panel"])
+            state["visible"] = False
+            log("焦点离开输入框，收起手写板")
+
+
+def _watch_panel_alive() -> None:
+    """外壳被关掉/杀进程时，Python 侧也要退出，别留一个看不见的服务。"""
+    while True:
+        time.sleep(2.0)
+        hwnd = state.get("panel")
+        if hwnd and not pw.user32.IsWindow(hwnd):
+            log("面板窗口已消失，退出")
+            os._exit(0)
 
 
 def toggle_panel() -> None:
@@ -351,6 +371,7 @@ def main() -> None:
         {1: toggle_panel, 2: lambda: os._exit(0)},
     )
     pw.FocusWatcher(on_focus).start()
+    threading.Thread(target=_watch_panel_alive, daemon=True).start()
     log("热键 Ctrl+Alt+H 显示/隐藏，Ctrl+Alt+Q 退出")
 
     try:

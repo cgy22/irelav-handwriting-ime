@@ -43,6 +43,7 @@ HWND_TOPMOST = ctypes.c_void_p(-1)
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
 SWP_SHOWWINDOW = 0x0040
+SWP_NOACTIVATE = 0x0010
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
 DWMWA_USE_IMMERSIVE_DARK_MODE = 20
 DWMWCP_ROUND = 2
@@ -218,29 +219,36 @@ def strip_frame(hwnd: int, topmost: bool = True) -> bool:
         user32.SetWindowLongW(hwnd, GWL_STYLE, style)
         # 触发一次重排，样式才会生效
         user32.SetWindowPos(hwnd, 0, 0, 0, 0, 0,
-                            SWP_NOMOVE | SWP_NOSIZE | 0x0020 | 0x0002 | 0x0001 | 0x0004)
+                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | 0x0020 | 0x0002 | 0x0001 | 0x0004)
         if dwmapi:
             pref = ctypes.c_int(DWMWCP_ROUND)
             dwmapi.DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
                                          ctypes.byref(pref), ctypes.sizeof(pref))
         if topmost:
-            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+            user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
         return True
     except Exception:
         return False
 
 
 def move_window(hwnd: int, x: int, y: int, w: Optional[int] = None, h: Optional[int] = None) -> None:
-    flags = 0 if (w and h) else (SWP_NOSIZE)
+    """移动/缩放窗口，且**绝不激活**（SWP_NOACTIVATE）——
+    输入法面板一旦被激活，目标输入框的光标就丢了。"""
+    flags = (0 if (w and h) else SWP_NOSIZE) | SWP_NOACTIVATE
     user32.SetWindowPos(hwnd, HWND_TOPMOST, int(x), int(y), int(w or 0), int(h or 0),
                         flags | SWP_SHOWWINDOW)
 
 
-def show_window(hwnd: int, focus: bool = True) -> None:
+def show_window(hwnd: int, focus: bool = False) -> None:
+    """显示面板。默认不激活自己——输入法弹出时不能把目标输入框的光标抢走。"""
     if not hwnd:
         return
-    user32.ShowWindow(hwnd, 9 if focus else 5)  # SW_RESTORE / SW_SHOW
-    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW)
+    SW_SHOWNOACTIVATE = 4
+    SW_RESTORE = 9
+    user32.ShowWindow(hwnd, SW_RESTORE if focus else SW_SHOWNOACTIVATE)
+    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW)
     if focus:
         set_foreground(hwnd)
 
