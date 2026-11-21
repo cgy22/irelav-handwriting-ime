@@ -197,6 +197,39 @@ def soft_ce(logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
     return -(target * logp).sum(dim=1).mean()
 
 
+def group_ce(
+    logits: torch.Tensor, y1: torch.Tensor, y2: torch.Tensor, label_smoothing: float = 0.15
+) -> torch.Tensor:
+    """身份组交叉熵（identity-group CE）。
+
+    对"大小写合并"的样本（y2>=0），只要求概率质量落在 {y1, y2} 这个组里：
+        loss = -log(p(y1) + p(y2))
+    而不是强迫模型在两种形态之间 50/50 对半分。
+
+    这一点很关键：孤立字形的形状本来就不携带大小写信息，用 50/50 软标签等于
+    让模型"学会犹豫"，损失降不下去、字形判别力也被稀释。按组算质量后，模型
+    可以专心把 mass 放在正确身份上，大小写交给 UI 的几何启发式去裁决。
+    """
+    logp = torch.log_softmax(logits.float(), dim=1)
+    lp1 = logp.gather(1, y1.view(-1, 1)).squeeze(1)
+    hard = y2 < 0
+
+    # 组内对数概率（硬标签就是该类本身）
+    tgt = lp1.clone()
+    if (~hard).any():
+        lp2 = logp[~hard].gather(1, y2[~hard].view(-1, 1)).squeeze(1)
+        tgt[~hard] = torch.logsumexp(torch.stack([lp1[~hard], lp2], dim=1), dim=1)
+
+    # 标签平滑：log 概率上界被托住，避免 group CE 无约束地把 logits 推到爆
+    # （实测：不加平滑时 logits 膨胀，BN 统计量承载了"校准"作用，
+    #  评估曲线出现 ±20% 的震荡）
+    if label_smoothing > 0:
+        loss = -(1.0 - label_smoothing) * tgt - label_smoothing * logp.mean(dim=1)
+    else:
+        loss = -tgt
+    return loss.mean()
+
+
 # ------------------------------------------------------------------ 数据集汇总
 def load_ext_data(per_class: int = 400, cache: bool = True):
     """实验②的全部训练数据。"""

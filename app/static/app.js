@@ -445,6 +445,10 @@
 
   /* ------------------------------------------------------------------ 启动 */
   resize();
-  loadState();
+  loadState().then(() => {
+    // 支持 ?mode=collect 直接进入采集模式（便于分享链接/截图）
+    const m = new URLSearchParams(location.search).get("mode");
+    if (m === "collect") document.querySelector('.tab[data-mode="collect"]').click();
+  });
   setInterval(loadState, 15000);
 })();

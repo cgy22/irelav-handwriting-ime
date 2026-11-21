@@ -19,6 +19,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Dict, List
+from urllib.parse import urlparse
 
 import numpy as np
 import torch
@@ -214,11 +215,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, f.read(), ctype)
 
     def do_GET(self):  # noqa: N802
-        if self.path in ("/", "/index.html"):
+        path = urlparse(self.path).path  # 去掉 ?query，避免 /?mode=collect 被当成未知路径
+        if path in ("/", "/index.html"):
             self._static("index.html")
-        elif self.path.startswith("/static/"):
-            self._static(self.path[len("/static/") :])
-        elif self.path == "/api/state":
+        elif path.startswith("/static/"):
+            self._static(path[len("/static/") :])
+        elif path == "/api/state":
             tr = counts_by_class("train")
             te = counts_by_class("test")
             self._json(
@@ -232,7 +234,7 @@ class Handler(BaseHTTPRequestHandler):
                     "counts_test": te,
                 }
             )
-        elif self.path == "/api/reload":
+        elif path == "/api/reload":
             REC.reload()
             self._json({"ok": True, "model": REC.name})
         else:

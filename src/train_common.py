@@ -20,13 +20,15 @@ def pick_device(prefer: str | None = None, verbose: bool = True) -> torch.device
     """选设备。默认 CPU。
 
     实测结论（本机 Arc 140V + 驱动 32.0.101.8860 + torch 2.15.0+xpu）：
-    XPU 训练有 40%~60% 的概率在首个 batch 抛 level_zero 39/40 号错误
-    （OUT_OF_DEVICE_MEMORY / OUT_OF_RESOURCES），换 batch、换 bf16/fp32、
-    去掉 channels_last、限制显存比例都只能降低概率、无法消除。
-    推理基准测试却能稳定跑（25ms/step），所以这是**训练路径**的驱动缺陷。
-    因此默认走 CPU（稳定、可复现），XPU 通过 MNIST_DEVICE=xpu 显式开启。
+    XPU 报 level_zero 39/40/20 号错误的真正原因不是驱动缺陷，而是**CPU 被占满**。
+    Level Zero 的命令队列/事件登记需要 CPU 时间片，一旦 8 个核都被别的进程
+    （尤其是同时跑的 CPU 训练）吃满，分配和同步就会超时并报
+    OUT_OF_DEVICE_MEMORY / OUT_OF_RESOURCES / DEVICE_LOST。
+    把 CPU 训练停掉之后，同一个模型在同一进程里立刻恢复正常（5873 img/s）。
+
+    因此：**训练时不要同时跑 CPU 重负载**（这是必须遵守的使用约束）。
     """
-    prefer = prefer or os.environ.get("MNIST_DEVICE", "cpu")
+    prefer = prefer or os.environ.get("MNIST_DEVICE", "xpu")
     if prefer == "xpu" and torch.xpu.is_available():
         for attempt in range(2):
             try:
@@ -81,6 +83,38 @@ class RunLogger:
             if new_file:
                 w.writeheader()
             w.writerow(row)
+
+
+@torch.no_grad()
+def recalibrate_bn(model: torch.nn.Module, x: np.ndarray, device: torch.device,
+                   bs: int = 256, n_batches: int = 60, seed: int = 7) -> None:
+    """用**干净、混合来源**的数据重算 BN running stats。
+
+    训练时输入永远是被仿射/加粗/加噪过的，running stats 会偏向"脏数据"分布；
+    测试集是干净的，统计量不匹配会直接吃掉 5~10 个点。用干净数据做一次累积平均
+    （momentum=None）即可抹平，代价约 1 秒。
+
+    必须在**混合来源**上做：只拿数字校准会让字母/标点的统计量跑偏
+    （实测 MNIST 反跌到 75%）。
+    """
+    bns = [m for m in model.modules() if isinstance(m, torch.nn.BatchNorm2d)]
+    if not bns:
+        return
+    saved = [(b.momentum, b.num_batches_tracked.clone()) for b in bns]
+    for b in bns:
+        b.momentum = None
+        b.num_batches_tracked.zero_()
+    model.train()
+    rng = np.random.default_rng(seed)
+    idx = rng.choice(len(x), min(n_batches * bs, len(x)), replace=False)
+    for i in range(0, len(idx), bs):
+        part = idx[i : i + bs]
+        xb = torch.from_numpy(x[part]).unsqueeze(1).to(device)
+        model(xb)
+    for b, (mom, cnt) in zip(bns, saved):
+        b.momentum = mom
+        b.num_batches_tracked.copy_(cnt)
+    model.eval()
 
 
 @torch.no_grad()

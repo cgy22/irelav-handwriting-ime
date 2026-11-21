@@ -61,7 +61,7 @@ def main() -> None:
     rep = np.concatenate([np.arange(len(utr_x))] * 4)
 
     model.train()
-    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-5)
+    opt = torch.optim.AdamW(model.parameters(), lr=LR, weight_decay=1e-5, foreach=False)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=EPOCHS)
     gen = torch.Generator().manual_seed(0)
     rng = np.random.default_rng(0)
@@ -74,7 +74,7 @@ def main() -> None:
         for xb, b1, b2 in data.make_batches(x, y1, y2, order, BATCH, device, True, gen, strength=0.6):
             with amp_context(device):
                 logits = model(xb)
-            loss = data.soft_ce(logits, data.build_soft_targets(b1, b2, NUM_CLASSES))
+            loss = data.group_ce(logits, b1, b2)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             opt.step()

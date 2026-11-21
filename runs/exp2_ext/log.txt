@@ -1,8 +1,31 @@
-[12:42:01] 评估集 mnist: 10000 张
-[12:42:01] 评估集 emnist: 20800 张
-[12:42:01] 评估集 synth: 6000 张
-[12:42:01] 模型 GlyphNet 参数量 299.8K, 设备 cpu, 训练集 224800
-[12:44:12] epoch 01/12 train_loss=2.0823 | mnist: loss=0.416 id=95.3% top5=99.6% | emnist: loss=2.615 id=64.3% top5=92.6% | synth: loss=1.157 id=83.6% top5=97.2% | 129.5s
-[12:44:12]    ^ 新最佳（mean identity acc 81.09%），已保存
-[12:46:12] epoch 02/12 train_loss=1.6056 | mnist: loss=0.467 id=97.2% top5=99.3% | emnist: loss=2.560 id=73.9% top5=95.0% | synth: loss=0.903 id=88.4% top5=98.1% | 119.9s
-[12:46:12]    ^ 新最佳（mean identity acc 86.52%），已保存
+[14:00:12] 评估集 mnist: 10000 张
+[14:00:12] 评估集 emnist: 20800 张
+[14:00:12] 评估集 synth: 6000 张
+[14:00:12] 模型 GlyphNet 参数量 299.8K, 设备 xpu, 训练集 224800
+[14:01:01] epoch 01/12 train_loss=2.2336 | mnist: loss=0.440 id=96.5% top5=99.8% | emnist: loss=1.743 id=87.1% top5=98.5% | synth: loss=0.956 id=89.8% top5=99.4% | 47.6s
+[14:01:01]    ^ 新最佳（mean identity acc 91.16%），已保存
+[14:01:44] epoch 02/12 train_loss=1.5346 | mnist: loss=0.396 id=96.6% top5=99.7% | emnist: loss=1.546 id=90.2% top5=99.1% | synth: loss=0.658 id=93.6% top5=99.6% | 42.8s
+[14:01:44]    ^ 新最佳（mean identity acc 93.45%），已保存
+[14:02:13] epoch 03/12 train_loss=1.4539 | mnist: loss=0.367 id=96.3% top5=99.5% | emnist: loss=1.523 id=90.7% top5=99.2% | synth: loss=0.596 id=94.0% top5=99.5% | 29.3s
+[14:02:13]    ^ 新最佳（mean identity acc 93.67%），已保存
+[14:02:43] epoch 04/12 train_loss=1.4190 | mnist: loss=0.299 id=98.1% top5=99.9% | emnist: loss=1.515 id=91.1% top5=99.3% | synth: loss=0.503 id=95.4% top5=99.7% | 30.0s
+[14:02:43]    ^ 新最佳（mean identity acc 94.88%），已保存
+[14:03:06] epoch 05/12 train_loss=1.3932 | mnist: loss=0.228 id=98.4% top5=99.9% | emnist: loss=1.507 id=91.8% top5=99.4% | synth: loss=0.479 id=95.7% top5=99.8% | 22.9s
+[14:03:06]    ^ 新最佳（mean identity acc 95.30%），已保存
+[14:03:30] epoch 06/12 train_loss=1.3784 | mnist: loss=0.261 id=98.6% top5=99.9% | emnist: loss=1.479 id=92.1% top5=99.4% | synth: loss=0.448 id=95.8% top5=99.8% | 23.9s
+[14:03:30]    ^ 新最佳（mean identity acc 95.51%），已保存
+[14:03:56] epoch 07/12 train_loss=1.3632 | mnist: loss=0.256 id=98.5% top5=99.9% | emnist: loss=1.488 id=92.0% top5=99.4% | synth: loss=0.427 id=96.0% top5=99.7% | 25.7s
+[14:03:56]    ^ 新最佳（mean identity acc 95.52%），已保存
+[14:04:25] epoch 08/12 train_loss=1.3508 | mnist: loss=0.227 id=98.9% top5=100.0% | emnist: loss=1.491 id=92.2% top5=99.4% | synth: loss=0.440 id=96.4% top5=99.7% | 29.1s
+[14:04:25]    ^ 新最佳（mean identity acc 95.84%），已保存
+[14:04:53] epoch 09/12 train_loss=1.3432 | mnist: loss=0.250 id=98.9% top5=100.0% | emnist: loss=1.476 id=92.7% top5=99.5% | synth: loss=0.434 id=96.4% top5=99.9% | 28.1s
+[14:04:53]    ^ 新最佳（mean identity acc 95.99%），已保存
+[14:05:21] epoch 10/12 train_loss=1.3355 | mnist: loss=0.262 id=98.7% top5=99.9% | emnist: loss=1.472 id=92.8% top5=99.5% | synth: loss=0.431 id=96.4% top5=99.8% | 27.7s
+[14:05:21]    ^ 新最佳（mean identity acc 95.99%），已保存
+[14:05:50] epoch 11/12 train_loss=1.3309 | mnist: loss=0.257 id=99.0% top5=100.0% | emnist: loss=1.476 id=92.9% top5=99.5% | synth: loss=0.424 id=96.5% top5=99.8% | 29.0s
+[14:05:50]    ^ 新最佳（mean identity acc 96.12%），已保存
+[14:06:19] epoch 12/12 train_loss=1.3297 | mnist: loss=0.257 id=98.9% top5=100.0% | emnist: loss=1.473 id=92.8% top5=99.5% | synth: loss=0.424 id=96.4% top5=99.7% | 28.8s
+[14:06:19] 训练完成，最佳 mean identity acc 96.12%，总耗时 6.1 分钟
+[14:06:19] 复载最佳权重 mnist: {'loss': 0.2573066596984863, 'acc_id': 0.9898, 'acc_top5_id': 0.9996, 'acc_exact': 0.9898}
+[14:06:21] 复载最佳权重 emnist: {'loss': 1.4758791321974534, 'acc_id': 0.9288942307692307, 'acc_top5_id': 0.995048076923077}
+[14:06:22] 复载最佳权重 synth: {'loss': 0.4241959393819173, 'acc_id': 0.965, 'acc_top5_id': 0.9978333333333333, 'acc_exact': 0.9015}

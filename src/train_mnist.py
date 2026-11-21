@@ -64,7 +64,7 @@ def main() -> None:
     n_par = sum(p.numel() for p in model.parameters())
     log.log(f"模型 MnistNet 参数量 {n_par/1e3:.1f}K, 设备 {device}")
 
-    opt = AdamW(model.parameters(), lr=LR, weight_decay=WD)
+    opt = AdamW(model.parameters(), lr=LR, weight_decay=WD, foreach=False)
     sched = CosineAnnealingLR(opt, T_max=EPOCHS)
     gen = torch.Generator().manual_seed(0)
     rng = np.random.default_rng(0)

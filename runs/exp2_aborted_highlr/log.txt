@@ -1,0 +1,15 @@
+[12:42:01] 评估集 mnist: 10000 张
+[12:42:01] 评估集 emnist: 20800 张
+[12:42:01] 评估集 synth: 6000 张
+[12:42:01] 模型 GlyphNet 参数量 299.8K, 设备 cpu, 训练集 224800
+[12:44:12] epoch 01/12 train_loss=2.0823 | mnist: loss=0.416 id=95.3% top5=99.6% | emnist: loss=2.615 id=64.3% top5=92.6% | synth: loss=1.157 id=83.6% top5=97.2% | 129.5s
+[12:44:12]    ^ 新最佳（mean identity acc 81.09%），已保存
+[12:46:12] epoch 02/12 train_loss=1.6056 | mnist: loss=0.467 id=97.2% top5=99.3% | emnist: loss=2.560 id=73.9% top5=95.0% | synth: loss=0.903 id=88.4% top5=98.1% | 119.9s
+[12:46:12]    ^ 新最佳（mean identity acc 86.52%），已保存
+[12:48:21] epoch 03/12 train_loss=1.5280 | mnist: loss=0.502 id=95.0% top5=99.2% | emnist: loss=3.334 id=45.6% top5=80.7% | synth: loss=1.379 id=79.9% top5=93.4% | 128.7s
+[12:50:28] epoch 04/12 train_loss=1.4928 | mnist: loss=0.718 id=85.4% top5=97.3% | emnist: loss=3.716 id=37.5% top5=78.0% | synth: loss=1.700 id=74.9% top5=91.2% | 126.8s
+[12:52:27] epoch 05/12 train_loss=1.4610 | mnist: loss=0.358 id=98.2% top5=99.6% | emnist: loss=2.806 id=69.0% top5=93.0% | synth: loss=0.834 id=88.9% top5=98.7% | 119.4s
+[12:54:25] epoch 06/12 train_loss=1.4444 | mnist: loss=0.660 id=95.1% top5=98.3% | emnist: loss=3.047 id=58.1% top5=89.8% | synth: loss=1.069 id=87.5% top5=95.8% | 117.4s
+[12:56:19] epoch 07/12 train_loss=1.4186 | mnist: loss=1.086 id=80.4% top5=93.2% | emnist: loss=3.465 id=47.5% top5=83.7% | synth: loss=1.292 id=85.2% top5=94.8% | 114.7s
+[12:58:31] epoch 08/12 train_loss=1.4062 | mnist: loss=0.422 id=98.2% top5=99.5% | emnist: loss=2.967 id=64.3% top5=90.7% | synth: loss=0.899 id=91.1% top5=97.5% | 131.2s
+[13:00:41] epoch 09/12 train_loss=1.3977 | mnist: loss=0.475 id=98.0% top5=99.4% | emnist: loss=3.183 id=58.3% top5=88.6% | synth: loss=1.039 id=88.4% top5=96.5% | 130.0s
