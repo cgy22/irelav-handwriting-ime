@@ -238,6 +238,23 @@ python -m src.train_final    :: merge collected handwriting into the shipping mo
 
 ---
 
+## 📦 Distribution Options
+
+| Form | Size | Needs Python installed? | Notes |
+| :--- | :--- | :--- | :--- |
+| `dist/TonhTzeIME/` | 2.5 MB | Yes (`numpy` + `Pillow`) | smallest; double-click `TonhTzeIME.exe` |
+| `dist/TonhTzeIME-portable/` | 90 MB | No | copy the folder anywhere, run `TonhTzeIME.exe` |
+| `dist/TonhTzeIME-single.exe` | 31 MB | No | one file; extracts once to `%LOCALAPPDATA%\TonhTzeIME` (first run ~10 s, later instant) |
+
+Build them with:
+
+```bat
+python tools/build_portable.py     :: portable folder (bundled Python runtime)
+python tools/pack_single.py        :: one self-extracting exe
+```
+
+---
+
 ## 📄 License
 
 [MIT](LICENSE) — Copyright © 2026 TonhTze AI, Copyright © 2021-2026 Dorn Hub.
@@ -502,6 +519,23 @@ python -m src.analyze_exp1
 python -m src.train_ext      :: 实验②
 python -m src.analyze_exp2
 python -m src.train_final    :: 把采集到的手写数据并进发货模型
+```
+
+---
+
+## 📦 三种分发形态
+
+| 形态 | 体积 | 需要预装 Python | 说明 |
+| :--- | :--- | :--- | :--- |
+| `dist/TonhTzeIME/` | 2.5 MB | 需要（`numpy` + `Pillow`） | 最小，双击 `TonhTzeIME.exe` |
+| `dist/TonhTzeIME-portable/` | 90 MB | 不需要 | 整个文件夹拷走即用，双击 `TonhTzeIME.exe` |
+| `dist/TonhTzeIME-single.exe` | 31 MB | 不需要 | 单文件；首次运行解压到 `%LOCALAPPDATA%\TonhTzeIME`（约 10 秒，之后秒开） |
+
+构建命令：
+
+```bat
+python tools/build_portable.py     :: 便携版（内嵌 Python 运行时）
+python tools/pack_single.py        :: 单文件自解压 exe
 ```
 
 ---

@@ -94,6 +94,13 @@ static class Program
     /// <summary>找 pythonw（优先无控制台版本）。</summary>
     private static string FindPython(string root)
     {
+        // 0) 便携版自带运行时（dist/TonhTzeIME-portable/runtime/pythonw.exe）
+        foreach (string rel in new[] { @"runtime\pythonw.exe", @"runtime\python.exe" })
+        {
+            string bundled = Path.Combine(root, rel);
+            if (File.Exists(bundled)) return bundled;
+        }
+
         // 1) 同目录的 python.txt
         string conf = Path.Combine(root, "python.txt");
         if (File.Exists(conf))
