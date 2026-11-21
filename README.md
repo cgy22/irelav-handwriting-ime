@@ -1,4 +1,4 @@
-# TonhTze Handwriting IME
+# ✍️ TonhTze Handwriting IME
 
 <img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-light.svg" alt="TonhTzeAI-logo-v1-light" width="400"><img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-dark.svg" alt="TonhTzeAI-logo-v1-dark" width="400">
 
@@ -261,7 +261,7 @@ Dorn Hub
 ---
 ---
 
-# TonhTze 手写输入法
+# ✍️ TonhTze 手写输入法
 
 <img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-light.svg" alt="TonhTzeAI-logo-v1-light" width="400"><img src="https://dornhub.eu.org/resources/images/TonhTzeAI/TonhTzeAI-logo-v1-dark.svg" alt="TonhTzeAI-logo-v1-dark" width="400">
 
