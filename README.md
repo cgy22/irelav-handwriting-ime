@@ -126,6 +126,67 @@ Preserving the aspect ratio matters: the identity of `-`, `|`, `'`, `.` lives in
 
 ---
 
+## 🖥️ Training Environment
+
+Everything below was measured on the machine that produced the shipped weights.
+
+### 🧾 Hardware
+
+| Part | Specification |
+| :--- | :--- |
+| Machine | LENOVO 83JQ (Intel Lunar Lake platform) |
+| CPU | Intel Core Ultra 7 258V — 8 cores / 8 threads (4 P-cores + 4 LP E-cores), 2.2 GHz base, 12 MB L3 |
+| Memory | 31.5 GB LPDDR5X, on-package, shared with the integrated GPU |
+| GPU | Intel Arc 140V iGPU — 16 GB shared, 64 EUs, 8 subslices, driver 32.0.101.8860, Level Zero 1.15.38308 |
+| NPU | Intel AI Boost (PCI `8086:643E`), 47 TOPS INT8 — present but **not used** (see below) |
+| OS | Windows 11 Pro for Workstations Insider Preview, build 26340 |
+
+### 🧰 Software Stack
+
+| Component | Version |
+| :--- | :--- |
+| Python | 3.15.0 (x64) |
+| PyTorch | 2.15.0+xpu |
+| numpy | 2.5.4 |
+| Pillow | 13.0.0 |
+| SciPy | 1.18.1 |
+| Matplotlib | 3.11.2 |
+| fontTools | 4.67.0 |
+| Compiler | MSVC 14.51 / Roslyn `csc` from Visual Studio 18 (native shell only) |
+
+### ⚡ Measured Compute
+
+4096³ matrix multiplication on the Arc 140V:
+
+| Precision | Throughput |
+| :--- | :--- |
+| fp32 | **3.20 TFLOP/s** |
+| bf16 | **18.65 TFLOP/s** |
+
+That 5.8× gap is why training runs under `bf16` autocast.
+
+Single glyph inference (same 28×28 input, batch 1):
+
+| Backend | Latency |
+| :--- | :--- |
+| numpy (what the client ships) | 3.60 ms |
+| PyTorch on CPU | 2.50 ms |
+| PyTorch on Arc 140V (XPU) | **0.99 ms** (1.32 ms including host↔device copies) |
+
+### ⏱️ Wall Clock
+
+| Run | Work | Device | Time |
+| :--- | :--- | :--- | :--- |
+| Experiment ① | 12 epochs × 60 000 images | CPU | 5.8 min |
+| Experiment ② | 12 epochs × 150 000 images | Arc 140V, bf16 | 6.1 min |
+| Final personalisation | 6 epochs × 1 002 samples × 8 | Arc 140V, bf16 | 3.7 min |
+
+### 🧠 Why the NPU Stays Idle
+
+The NPU is reachable only through OpenVINO (or ONNX Runtime's OpenVINO EP), and neither publishes **cp315** wheels yet. More importantly, the 100-class model has 299.8 K parameters (≈5 MFLOP) — a single NPU dispatch costs more than the whole computation, so there is nothing to gain. The client therefore stays on plain numpy, which keeps the download at 2.5 MB instead of shipping a second runtime.
+
+---
+
 ## 🧪 Experiments
 
 ### 🔢 ① MNIST Baseline
@@ -436,6 +497,67 @@ mnist/
 * **身份组交叉熵 + 标签平滑**：大小写合并的样本不要求 a/A 各半，只要求概率质量落在正确的身份组里。逼它对半分会让模型"学会犹豫"，还会把 logits 推向爆炸。
 * **每轮用干净的混合数据重算 BN 统计量**：训练输入永远被增强过，滑动统计量会偏离干净测试分布，白丢 5~10 个点。
 * **AdamW 与 `clip_grad_norm_` 一律 `foreach=False`**：在这块 Intel Arc 核显上，融合多张量内核要么慢 6 倍，要么直接报错。
+
+---
+
+## 🖥️ 训练环境
+
+以下数据全部在产出这批权重的同一台机器上实测。
+
+### 🧾 硬件
+
+| 部件 | 规格 |
+| :--- | :--- |
+| 整机 | LENOVO 83JQ（Intel Lunar Lake 平台） |
+| CPU | Intel Core Ultra 7 258V —— 8 核 / 8 线程（4 个 P-core + 4 个 LP E-core），2.2 GHz 基频，12 MB L3 |
+| 内存 | 31.5 GB LPDDR5X，封装内，与核显共享 |
+| 显卡 | Intel Arc 140V 核显 —— 16 GB 共享，64 EU，8 个 subslice，驱动 32.0.101.8860，Level Zero 1.15.38308 |
+| NPU | Intel AI Boost（PCI `8086:643E`），47 TOPS INT8 —— 存在但**未使用**（原因见下） |
+| 系统 | Windows 11 Pro for Workstations Insider Preview，Build 26340 |
+
+### 🧰 软件栈
+
+| 组件 | 版本 |
+| :--- | :--- |
+| Python | 3.15.0（x64） |
+| PyTorch | 2.15.0+xpu |
+| numpy | 2.5.4 |
+| Pillow | 13.0.0 |
+| SciPy | 1.18.1 |
+| Matplotlib | 3.11.2 |
+| fontTools | 4.67.0 |
+| 编译器 | MSVC 14.51 / Visual Studio 18 自带 Roslyn `csc`（仅原生外壳用到） |
+
+### ⚡ 实测算力
+
+Arc 140V 上的 4096³ 矩阵乘：
+
+| 精度 | 实测吞吐 |
+| :--- | :--- |
+| fp32 | **3.20 TFLOP/s** |
+| bf16 | **18.65 TFLOP/s** |
+
+相差 5.8 倍，这就是训练一律开 `bf16` autocast 的原因。
+
+单字推理（同一张 28×28 输入，batch 1）：
+
+| 后端 | 延迟 |
+| :--- | :--- |
+| numpy（客户端实际使用） | 3.60 ms |
+| PyTorch CPU | 2.50 ms |
+| PyTorch + Arc 140V（XPU） | **0.99 ms**（含主机↔设备拷贝 1.32 ms） |
+
+### ⏱️ 实际耗时
+
+| 训练 | 工作量 | 设备 | 耗时 |
+| :--- | :--- | :--- | :--- |
+| 实验① | 12 轮 × 6 万张 | CPU | 5.8 分钟 |
+| 实验② | 12 轮 × 15 万张 | Arc 140V，bf16 | 6.1 分钟 |
+| 最终个性化 | 6 轮 × 1002 条 × 8 | Arc 140V，bf16 | 3.7 分钟 |
+
+### 🧠 NPU 为什么闲着
+
+NPU 目前只能通过 OpenVINO（或 ONNX Runtime 的 OpenVINO EP）访问，而两者都还没有 **cp315** 的 wheel。更关键的是：100 类模型只有 29.98 万参数（约 5 MFLOP），**一次 NPU 调度本身的开销就超过整个计算量**，用了也没有收益。所以客户端保持在纯 numpy 上——这也让下载体积停在 2.5 MB，而不是再塞一个运行时。
 
 ---
 
