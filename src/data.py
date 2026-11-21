@@ -108,12 +108,13 @@ def build_synth_cached(per_class: int = 400, seed: int = 20261121, use_cache: bo
 
 
 # --------------------------------------------------------------- 批次与增强
-def _affine_matrices(n: int, gen: torch.Generator, dev: torch.device) -> torch.Tensor:
+def _affine_matrices(n: int, gen: torch.Generator, dev: torch.device,
+                     aspect_range: float = 0.18) -> torch.Tensor:
     ang = (torch.rand(n, generator=gen) * 2 - 1) * (9.0 * np.pi / 180.0)
     scale = 0.90 + torch.rand(n, generator=gen) * 0.20
     # 各向异性缩放：手写的字宽/字高比例千差万别，MNIST 的"标准胖瘦"不是唯一解。
     # 实测：不做这项增强时，把数字纵向压扁到 0.75 会让准确率从 98.98% 掉到 66.79%。
-    aspect = 1.0 + (torch.rand(n, generator=gen) * 2 - 1) * 0.18
+    aspect = 1.0 + (torch.rand(n, generator=gen) * 2 - 1) * aspect_range
     tx = (torch.rand(n, generator=gen) * 2 - 1) * 0.10
     ty = (torch.rand(n, generator=gen) * 2 - 1) * 0.10
     shear = (torch.rand(n, generator=gen) * 2 - 1) * 0.12
@@ -128,10 +129,11 @@ def _affine_matrices(n: int, gen: torch.Generator, dev: torch.device) -> torch.T
     return theta.to(dev)
 
 
-def augment_batch(x: torch.Tensor, gen: torch.Generator, strength: float = 1.0) -> torch.Tensor:
+def augment_batch(x: torch.Tensor, gen: torch.Generator, strength: float = 1.0,
+                  aspect_range: float = 0.18) -> torch.Tensor:
     """batch 级在线增强：仿射 + 粗细变化 + 噪声。x 在 CPU 上 float32 0..1。"""
     n = x.shape[0]
-    theta = _affine_matrices(n, gen, x.device)
+    theta = _affine_matrices(n, gen, x.device, aspect_range)
     grid = F.affine_grid(theta, x.shape, align_corners=False)
     x = F.grid_sample(x, grid, align_corners=False, padding_mode="zeros")
 
@@ -160,13 +162,14 @@ def make_batches(
     train: bool,
     gen: Optional[torch.Generator] = None,
     strength: float = 1.0,
+    aspect_range: float = 0.18,
 ):
     """按 order 切 batch，返回 (xb[bf16/fp32 on device, 1,28,28], y1, y2)。"""
     for i in range(0, len(order), batch_size):
         idx = order[i : i + batch_size]
         xb = torch.from_numpy(x[idx]).unsqueeze(1)  # float32 on CPU
         if train and gen is not None:
-            xb = augment_batch(xb, gen, strength)
+            xb = augment_batch(xb, gen, strength, aspect_range)
         # 注意：XPU 上 channels_last 会触发 level_zero 39 号显存错误（已实测复现），
         # 所以这里统一用默认 NCHW。bf16 带来的收益已足够（比 CPU 快约 8 倍）。
         xb = xb.to(device, non_blocking=True)
