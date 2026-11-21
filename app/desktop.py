@@ -188,9 +188,11 @@ def inject_text(text: str, enter: bool = False):
             break
         time.sleep(0.03)
     time.sleep(0.06)
-    ok = pw.paste_text(text)
+    clip = pw.set_clipboard_text(text)
+    ok = clip and pw.paste_text(text)
     if not ok:
         ok = pw.type_text(text)   # 剪贴板不可用时退回逐字符
+    log(f"  clipboard={clip} paste={ok} fg_after={pw.get_foreground()} target={target}")
     if enter:
         time.sleep(0.02)
         pw.press_key("enter")
