@@ -197,6 +197,7 @@
       strokes: state.strokes.map((s) => s.map((p) => [p.x, p.y, p.p])),
       canvas: { w: pad.clientWidth, h: pad.clientHeight },
       line_heights: state.lineHeights,
+      context: state.text.slice(-8),
     });
     if (res.error) {
       setStatus(res.error, true);

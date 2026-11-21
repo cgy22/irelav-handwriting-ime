@@ -103,14 +103,63 @@ def case_prior(height: float, line_heights: List[float]) -> float:
     return 0.0
 
 
-def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6):
-    """大小写先验重排 + 按身份去重，返回候选列表。"""
+def char_group(ch: str) -> str:
+    if ch.isdigit():
+        return "digit"
+    if ch.islower() or ch in "æœê":
+        return "lower"
+    if ch.isupper() or ch in "ÆŒÊ":
+        return "upper"
+    return "symbol"
+
+
+# 手写里真正"同形异类"的组：不靠上下文不可能稳定区分
+AMBIG_SETS = [set(x) for x in (
+    "0Oo", "1Il|", "2Zz", "5Ss", "8B", "6Gb", "9gq", "7T", "4A", "3E",
+)]
+
+
+def ambiguity_bonus(classes: List[str], ctx: str) -> np.ndarray:
+    """只在同形组内部按上下文定向加权。
+
+    不能对整类做加权（那会把 "3" 也推向字母），只对"同一张图对应多个类"的组生效：
+    上下文是数字就抬同形组里的数字，是字母就抬字母。+2.4 对数几率足以翻转
+    0.7 vs 0.16 这种差距，同时不影响无关字符。
+    """
+    ctx = (ctx or "")[-8:]
+    digits = sum(c.isdigit() for c in ctx)
+    letters = sum(c.isalpha() for c in ctx)
+    bonus = np.zeros(len(classes))
+    if not ctx or (digits and letters):
+        return bonus
+    prefer_digit = digits > 0
+    for group in AMBIG_SETS:
+        members = [i for i, ch in enumerate(classes) if ch in group]
+        if len(members) < 2:
+            continue
+        for i in members:
+            ch = classes[i]
+            # 只抬"真正想要的类别"：字母上下文只抬字母，数字上下文只抬数字。
+            # 不能把符号（| / l 这类）一起抬，否则 I 永远压不过 |。
+            hit = ch.isdigit() if prefer_digit else ch.isalpha()
+            if hit:
+                bonus[i] += 3.2
+    return bonus
+
+
+def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6, ctx: str = ""):
+    """大小写先验 + 上下文先验重排，并按身份去重。"""
     logits = np.log(np.clip(probs, 1e-8, 1.0)).astype(np.float64)
     for i, ch in enumerate(classes):
         if ch.isupper() or ch in "ÆŒÊ":
             logits[i] += prior
         elif ch.islower() or ch in "æœê":
             logits[i] -= prior
+    logits += ambiguity_bonus(classes, ctx)
+    # 展示用的置信度必须跟着重排后的分数走，否则会出现"第一候选 16%、第二候选 69%"的怪象
+    adj = np.exp(logits - logits.max())
+    adj /= adj.sum()
+
     order = np.argsort(-logits)
     seen: Dict[str, bool] = {}
     out = []
@@ -124,7 +173,7 @@ def candidates(probs: np.ndarray, classes: List[str], prior: float, k: int = 6):
         out.append(
             {
                 "ch": ch,
-                "p": round(float(probs[int(idx)]), 4),
+                "p": round(float(adj[int(idx)]), 4),
                 "alt": up if ch == lo else lo,
             }
         )
@@ -278,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
         if not heights:
             # 行首没有参照高度：默认偏小写（符合输入法习惯），Shift 可强制大写
             prior = -0.3
-        top = candidates(probs, REC.classes, prior)
+        top = candidates(probs, REC.classes, prior, ctx=payload.get("context") or "")
         ms = (time.perf_counter() - t0) * 1000
         hint = "upper" if prior > 0.5 else ("lower" if prior < -0.5 else "unknown")
         self._json({"top": top, "ms": round(ms, 1), "case_hint": hint, "height": round(met["height"], 1)})
