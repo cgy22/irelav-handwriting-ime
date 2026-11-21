@@ -125,7 +125,7 @@ Preserving the aspect ratio matters: the identity of `-`, `|`, `'`, `.` lives in
 
 * **Identity-group cross-entropy + label smoothing** for case-merged data. Forcing a 50/50 split between `a` and `A` teaches the model to hesitate and lets logits explode; requiring only that probability mass lands inside the group fixes it.
 * **BatchNorm recalibration** on clean, mixed-source data after every epoch. Training inputs are always augmented, so running statistics drift away from the clean test distribution.
-* **`foreach=False`** for AdamW and `clip_grad_norm_`. On this Intel Arc iGPU the fused multi-tensor kernels are either 6× slower or fail outright.
+* **`foreach=False`** for AdamW and `clip_grad_norm_`. On this Intel Arc GPU the fused multi-tensor kernels are either 6× slower or fail outright.
 
 ---
 
@@ -199,7 +199,7 @@ Data per epoch: 150 000 samples sampled by inverse class frequency from MNIST (6
 | EMNIST letters test | **93.00 %** | 99.44 % | — (case merged) |
 | Synthetic hold-out | **96.37 %** | 99.67 % | 89.52 % |
 
-Trained in **6.1 minutes** on the Intel Arc 140V iGPU.
+Trained in **6.1 minutes** on the Intel Arc 140V GPU.
 
 ![100-class curves](runs/exp2_ext/curves.png)
 
